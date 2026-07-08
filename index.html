@@ -2,15 +2,15 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CamStream Sécurisé</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>CamLink Pro</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body {
             margin: 0;
-            background: radial-gradient(circle, #1a1a2e 0%, #0f0f1b 100%);
+            background: radial-gradient(circle, #0b0b16 0%, #05050a 100%);
             color: #ffffff;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Segoe UI', Arial, sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -19,106 +19,170 @@
         }
         .container {
             text-align: center;
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(255, 255, 255, 0.03);
             padding: 30px;
             border-radius: 16px;
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-            backdrop-filter: blur(8px);
-            border: 1px rgba(255, 255, 255, 0.1) solid;
+            backdrop-filter: blur(10px);
+            border: 1px rgba(255, 255, 255, 0.08) solid;
             max-width: 400px;
             width: 90%;
+            position: relative;
         }
-        h1 { color: #00adb5; font-size: 24px; margin-bottom: 20px; }
+        h1 { color: #00f2ff; font-size: 26px; margin-bottom: 20px; text-shadow: 0 0 10px rgba(0,242,255,0.3); }
         button {
-            background: #00adb5;
+            background: linear-gradient(135deg, #00f2ff, #7000ff);
             color: white;
             border: none;
-            padding: 12px 24px;
-            margin: 10px;
-            border-radius: 8px;
+            padding: 14px 24px;
+            margin: 10px 0;
+            border-radius: 10px;
             cursor: pointer;
             font-weight: bold;
+            width: 100%;
             transition: 0.3s;
-            width: 80%;
         }
-        button:hover { background: #007c82; transform: translateY(-2px); }
+        button:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,242,255,0.4); }
         input {
-            padding: 12px;
-            border-radius: 8px;
-            border: 1px solid #333;
-            background: #222831;
+            padding: 14px;
+            border-radius: 10px;
+            border: 1px solid #222;
+            background: #0d0d1a;
             color: white;
             text-align: center;
-            font-size: 18px;
-            margin-bottom: 10px;
-            width: 75%;
+            font-size: 20px;
+            margin-bottom: 15px;
+            width: calc(100% - 30px);
+            letter-spacing: 2px;
         }
-        .hidden { display: none; }
-        video {
+        .back-btn {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            background: none;
+            border: none;
+            color: #a0a0a0;
+            font-size: 20px;
+            cursor: pointer;
+            width: auto;
+            padding: 0;
+            margin: 0;
+        }
+        .back-btn:hover { color: #00f2ff; }
+        .hidden { display: none !important; }
+        
+        /* Vidéos */
+        #local-preview {
+            width: 100%;
+            height: 200px;
+            background: #000;
+            border-radius: 10px;
+            object-fit: cover;
+            margin-top: 15px;
+        }
+        #full-video {
             position: fixed;
             top: 0; left: 0;
             width: 100vw; height: 100vh;
             object-fit: cover;
             background: black;
+            z-index: 99;
+        }
+        .controls-overlay {
+            position: fixed;
+            bottom: 30px; left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            display: flex;
+            gap: 20px;
+        }
+        .circle-btn {
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid #00f2ff;
+            color: white;
+            width: 60px; height: 60px;
+            border-radius: 50%;
+            font-size: 24px;
+            display: flex; justify-content: center; align-items: center;
+            cursor: pointer;
         }
     </style>
 </head>
 <body>
 
     <div id="menu" class="container">
-        <h1>CamStream</h1>
-        <p>Choisissez le rôle de cet appareil :</p>
-        <button onclick="initViewer()">🖥️ Afficher une caméra (PC)</button>
-        <button onclick="initStreamer()">📱 Partager ma caméra (Tél)</button>
+        <h1>CamLink Pro</h1>
+        <p style="color: #aaa;">Sélectionnez le rôle de cet appareil :</p>
+        <button onclick="switchScreen('viewer-screen'); initViewer();">🖥️ Afficher la caméra (PC)</button>
+        <button onclick="switchScreen('streamer-screen');">📱 Partager ma caméra (Tél)</button>
     </div>
 
     <div id="viewer-screen" class="container hidden">
-        <h1>Votre Code de Liaison</h1>
-        <div id="code-display" style="font-size: 32px; font-weight: bold; color: #00adb5; margin: 20px 0;">...</div>
-        <p>Entrez ce code sur votre téléphone.</p>
+        <button class="back-btn" onclick="goBack()">←</button>
+        <h1>Code de Liaison</h1>
+        <div id="code-display" style="font-size: 36px; font-weight: bold; color: #00f2ff; margin: 20px 0; letter-spacing: 4px;">........</div>
+        <p style="color: #aaa;">Entrez ce code à 8 chiffres sur votre téléphone.</p>
     </div>
 
     <div id="streamer-screen" class="container hidden">
-        <h1>Connexion au PC</h1>
-        <input type="text" id="code-input" placeholder="Entrez le code à 6 chiffres" maxlength="6">
-        <button onclick="sendCode()">Valider le code</button>
+        <button class="back-btn" onclick="goBack()">←</button>
+        <h1>Connexion Sécurisée</h1>
+        <input type="tel" id="code-input" placeholder="00000000" maxlength="8">
+        <button onclick="sendCode()">Demander la liaison</button>
     </div>
 
-    <div id="popup" class="container hidden" style="position: absolute; z-index: 10;">
-        <h1>⚠️ Demande d'accès</h1>
+    <div id="mobile-streaming-screen" class="container hidden">
+        <h1>Diffusion en cours</h1>
+        <video id="local-preview" autoplay playsinline muted></video>
+        <p style="color: #aaa; font-size: 14px;">Pincez l'écran pour zoomer</p>
+        <button onclick="toggleCamera()" style="background: #333;">🔄 Changer de caméra</button>
+    </div>
+
+    <div id="popup" class="container hidden" style="position: absolute; z-index: 100; background: #111126;">
+        <h1>⚠️ Autorisation</h1>
         <p id="popup-text">Un appareil souhaite se connecter.</p>
-        <button onclick="respondPermission(true)" style="background: #4e9f3d;">Autoriser</button>
-        <button onclick="respondPermission(false)" style="background: #d9534f;">Refuser</button>
+        <button onclick="respondPermission(true)" style="background: #28a745;">Autoriser l'accès</button>
+        <button onclick="respondPermission(false)" style="background: #dc3545;">Refuser</button>
     </div>
 
     <video id="full-video" class="hidden" autoplay playsinline></video>
 
     <script>
-        const socket = io('http://localhost:3000'); // Remplace par ton IP locale pour tester sur téléphone
-        let myDeviceName = navigator.userAgent.split(' ')[0]; // Nom d'appareil basique
+        const socket = io('http://localhost:3000'); // Mettre l'IP de ton PC pour tester en Wifi local
         let currentCode = "";
+        let currentFacingMode = "environment"; // "environment" = arrière, "user" = avant
+        let localStream = null;
+        let zoomTrack = null;
+        let startDist = 0; // Pour le Pinch-to-zoom
 
-        function hideAll() {
+        // --- Navigation ---
+        function switchScreen(screenId) {
             document.getElementById('menu').classList.add('hidden');
             document.getElementById('viewer-screen').classList.add('hidden');
             document.getElementById('streamer-screen').classList.add('hidden');
+            document.getElementById('mobile-streaming-screen').classList.add('hidden');
+            
+            document.getElementById(screenId).classList.remove('hidden');
         }
 
-        // --- Logique du PC ---
+        function goBack() {
+            if(localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            switchScreen('menu');
+        }
+
+        // --- Logique PC (Viewer) ---
         function initViewer() {
-            hideAll();
-            document.getElementById('viewer-screen').classList.remove('hidden');
-            socket.emit('request-code', myDeviceName);
+            socket.emit('request-code', "Mon PC");
         }
 
         socket.on('code-generated', (code) => {
             currentCode = code;
             document.getElementById('code-display').innerText = code;
-            // Ici tu pourras aussi générer un QR code avec une bibliothèque comme QRCode.js
         });
 
         socket.on('ask-permission', ({ streamerName, code }) => {
-            document.getElementById('popup-text').innerText = `L'appareil "${streamerName}" veut afficher sa caméra ici. C'est bien vous ?`;
+            document.getElementById('popup-text').innerText = `L'appareil "${streamerName}" veut diffuser sa caméra ici. Confirmez-vous ?`;
             document.getElementById('popup').classList.remove('hidden');
         });
 
@@ -127,27 +191,98 @@
             socket.emit('permission-response', { code: currentCode, accepted });
         }
 
-        // --- Logique du Téléphone ---
-        function initStreamer() {
-            hideAll();
-            document.getElementById('streamer-screen').classList.remove('hidden');
-        }
-
+        // --- Logique Téléphone (Streamer) ---
         function sendCode() {
             const code = document.getElementById('code-input').value;
-            socket.emit('verify-code', { code, deviceName: myDeviceName });
+            currentCode = code;
+            socket.emit('verify-code', { code, deviceName: "Mon Smartphone" });
         }
 
-        // --- Une fois la liaison validée par les deux ---
-        socket.on('connection-approved', ({ targetId }) => {
-            hideAll();
-            alert("Liaison sécurisée réussie ! Lancement du flux vidéo...");
-            // C'est ici qu'on déclenchera le flux de la caméra (WebRTC API)
+        socket.on('connection-approved', async () => {
+            if (!document.getElementById('viewer-screen').classList.contains('hidden')) {
+                // Si on est le PC -> On passe en plein écran vidéo
+                document.getElementById('viewer-screen').classList.add('hidden');
+                document.getElementById('full-video').classList.remove('hidden');
+                // (Ici se branchera la réception du flux WebRTC)
+            } else {
+                // Si on est le téléphone -> On lance la caméra et l'aperçu
+                switchScreen('mobile-streaming-screen');
+                await startCamera();
+            }
         });
 
-        socket.on('connection-denied', () => {
-            alert("Connexion refusée par l'autre appareil.");
-        });
+        socket.on('connection-denied', () => { alert("Connexion refusée ou code expiré."); });
+        socket.on('error-message', (msg) => { alert(msg); });
+
+        // --- Gestion Caméra & Zoom ---
+        async function startCamera() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+
+            try {
+                // Configuration de la caméra avec le mode choisi
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+                    audio: false
+                });
+
+                const videoElement = document.getElementById('local-preview');
+                videoElement.srcObject = localStream;
+
+                // Récupération de la piste vidéo pour appliquer le zoom si supporté
+                zoomTrack = localStream.getVideoTracks()[0];
+                setupPinchToZoom(videoElement);
+
+            } catch (err) {
+                alert("Erreur d'accès à la caméra : " + err.message);
+            }
+        }
+
+        async function toggleCamera() {
+            currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
+            await startCamera();
+        }
+
+        // --- Moteur de Gestion Gestuelle : Pinch-To-Zoom ---
+        function setupPinchToZoom(element) {
+            element.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 2) {
+                    // Calcule la distance initiale entre les deux doigts
+                    startDist = Math.hypot(
+                        e.touches[0].pageX - e.touches[1].pageX,
+                        e.touches[0].pageY - e.touches[1].pageY
+                    );
+                }
+            });
+
+            element.addEventListener('touchmove', async (e) => {
+                if (e.touches.length === 2 && zoomTrack) {
+                    const capabilities = zoomTrack.getCapabilities();
+                    // On vérifie si l'appareil supporte le zoom matériel
+                    if (!capabilities.zoom) return; 
+
+                    const currentDist = Math.hypot(
+                        e.touches[0].pageX - e.touches[1].pageX,
+                        e.touches[0].pageY - e.touches[1].pageY
+                    );
+
+                    // Calcul du facteur de changement
+                    const delta = currentDist / startDist;
+                    const settings = zoomTrack.getSettings();
+                    let newZoom = settings.zoom * delta;
+
+                    // On s'assure de ne pas dépasser les limites de l'appareil
+                    newZoom = Math.max(capabilities.zoom.min, Math.min(capabilities.zoom.max, newZoom));
+
+                    try {
+                        await zoomTrack.applyConstraints({ advanced: [{ zoom: newZoom }] });
+                    } catch (err) {
+                        console.log("Le zoom n'a pas pu s'appliquer", err);
+                    }
+                }
+            });
+        }
     </script>
 </body>
 </html>
