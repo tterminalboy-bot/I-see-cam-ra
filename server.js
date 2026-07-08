@@ -9,7 +9,7 @@ const io = new Server(server, { cors: { origin: "*" } });
 const pendingConnections = {}; 
 
 io.on('connection', (socket) => {
-    // Génération du code à 8 chiffres
+    // Génère un code à 8 chiffres unique à chaque appel
     socket.on('request-code', (deviceName) => {
         const code = Math.floor(10000000 + Math.random() * 90000000).toString(); 
         pendingConnections[code] = {
@@ -44,4 +44,4 @@ io.on('connection', (socket) => {
     });
 });
 
-server.listen(3000, () => console.log('Serveur CamLink Pro sur le port 3000'));
+server.listen(3000, () => console.log('Serveur CamLink Pro actif sur le port 3000'));
