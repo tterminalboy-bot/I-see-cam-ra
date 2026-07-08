@@ -27,6 +27,7 @@
             max-width: 400px;
             width: 90%;
             position: relative;
+            z-index: 10;
         }
         h1 { color: #00f2ff; font-size: 26px; margin-bottom: 20px; text-shadow: 0 0 10px rgba(0,242,255,0.3); }
         button {
@@ -43,7 +44,6 @@
         }
         button:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,242,255,0.4); }
         
-        /* Input optimisé : Uniquement des chiffres */
         input {
             padding: 14px;
             border-radius: 10px;
@@ -71,17 +71,32 @@
             padding: 0;
             margin: 0;
         }
-        .back-btn:hover { color: #00f2ff; }
         .hidden { display: none !important; }
         
+        /* RETOUR MOBILE PLEIN ÉCRAN */
+        #mobile-streaming-screen {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            background: #000;
+            z-index: 50;
+        }
         #local-preview {
             width: 100%;
-            height: 200px;
-            background: #000;
-            border-radius: 10px;
+            height: 100%;
             object-fit: cover;
-            margin-top: 15px;
         }
+        .mobile-ui {
+            position: absolute;
+            bottom: 30px; left: 50%;
+            transform: translateX(-50%);
+            width: 85%;
+            text-align: center;
+            pointer-events: none;
+        }
+        .mobile-ui button { pointer-events: auto; }
+
+        /* PLEIN ÉCRAN PC POUR LE FLUX FINAL */
         #full-video {
             position: fixed;
             top: 0; left: 0;
@@ -115,11 +130,13 @@
         <button onclick="sendCode()">Demander la liaison</button>
     </div>
 
-    <div id="mobile-streaming-screen" class="container hidden">
-        <h1>Diffusion en cours</h1>
+    <div id="mobile-streaming-screen" class="hidden">
         <video id="local-preview" autoplay playsinline muted></video>
-        <p style="color: #aaa; font-size: 14px;">Pincez l'écran pour zoomer</p>
-        <button onclick="toggleCamera()" style="background: #333;">🔄 Changer de caméra</button>
+        <div class="mobile-ui">
+            <p style="color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.8); font-size: 14px; margin-bottom: 10px;">Pincez l'écran pour zoomer</p>
+            <button onclick="toggleCamera()" style="background: rgba(0,0,0,0.6); border: 1px solid #00f2ff;">🔄 Changer de caméra</button>
+            <button onclick="goBack()" style="background: rgba(220,53,69,0.6); margin-top: 5px;">Quitter</button>
+        </div>
     </div>
 
     <div id="popup" class="container hidden" style="position: absolute; z-index: 100; background: #111126;">
@@ -132,38 +149,45 @@
     <video id="full-video" class="hidden" autoplay playsinline></video>
 
     <script>
-        // REMPLACE 'localhost' PAR L'IP DE TON PC (ex: 'http://192.168.1.50:3000') POUR TESTER AVEC TON TÉLÉPHONE EN WIFI
-        const socket = io('https://i-see-cam-ra.onrender.com'); 
+        // METS BIEN TON URL DE RENDER ICI :
+        const socket = io('https://ton-service-render.onrender.com'); 
+        
         let currentCode = "";
         let currentFacingMode = "environment"; 
         let localStream = null;
         let zoomTrack = null;
         let startDist = 0; 
+        let baseZoom = 1; // Stocke le niveau de zoom actuel
+        let peerConnection = null;
+
+        // Serveurs STUN gratuits de Google pour connecter le PC et le Tél ensemble sur internet
+        const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
         function switchScreen(screenId) {
             document.getElementById('menu').classList.add('hidden');
             document.getElementById('viewer-screen').classList.add('hidden');
             document.getElementById('streamer-screen').classList.add('hidden');
             document.getElementById('mobile-streaming-screen').classList.add('hidden');
-            
-            document.getElementById(screenId).classList.remove('hidden');
+            if(screenId !== 'mobile-streaming-screen' && screenId !== 'full-video') {
+                document.getElementById(screenId).classList.remove('hidden');
+            } else {
+                document.getElementById(screenId).classList.remove('hidden');
+            }
         }
 
         function goBack() {
-            if(localStream) {
-                localStream.getTracks().forEach(track => track.stop());
-            }
+            if(localStream) localStream.getTracks().forEach(track => track.stop());
+            if(peerConnection) peerConnection.close();
+            document.getElementById('full-video').classList.add('hidden');
             switchScreen('menu');
         }
 
         // --- Logique PC (Viewer) ---
         function initViewer() {
-            // On remet le texte de chargement à chaque ouverture pour éviter de voir l'ancien code
             document.getElementById('code-display').innerText = "GÉNÉRATION...";
             socket.emit('request-code', "Mon PC");
         }
 
-        // Réception et affichage instantané du vrai code à 8 chiffres
         socket.on('code-generated', (code) => {
             currentCode = code;
             document.getElementById('code-display').innerText = code;
@@ -186,28 +210,61 @@
             socket.emit('verify-code', { code, deviceName: "Mon Smartphone" });
         }
 
-        socket.on('connection-approved', async () => {
-            if (!document.getElementById('viewer-screen').classList.contains('hidden')) {
-                document.getElementById('viewer-screen').classList.add('hidden');
-                document.getElementById('full-video').classList.remove('hidden');
+        // --- DÉCLENCHEMENT DE LA VIDÉO (WebRTC) ---
+        socket.on('connection-approved', async ({ targetId }) => {
+            const isPC = !document.getElementById('viewer-screen').classList.contains('hidden');
+            
+            peerConnection = new RTCPeerConnection(rtcConfig);
+
+            // Gestion de l'envoi des signaux de connexion réseau
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('rtc-signal', { to: targetId, candidate: event.candidate });
+                }
+            };
+
+            if (isPC) {
+                // Configuration du PC pour recevoir la vidéo
+                switchScreen('full-video');
+                peerConnection.ontrack = (event) => {
+                    document.getElementById('full-video').srcObject = event.streams[0];
+                };
             } else {
+                // Configuration du téléphone pour filmer et envoyer
                 switchScreen('mobile-streaming-screen');
                 await startCamera();
+                
+                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+                
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                socket.emit('rtc-signal', { to: targetId, sdp: peerConnection.localDescription });
+            }
+        });
+
+        // Échange des clés WebRTC via le serveur Render
+        socket.on('rtc-signal', async ({ sdp, candidate }) => {
+            if (sdp) {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
+                if (peerConnection.remoteDescription.type === 'offer') {
+                    const answer = await peerConnection.createAnswer();
+                    await peerConnection.setLocalDescription(answer);
+                    socket.emit('rtc-signal', { to: currentCode, sdp: peerConnection.localDescription }); // Note simplifiée pour liaison directe
+                }
+            } else if (candidate) {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
             }
         });
 
         socket.on('connection-denied', () => { alert("Connexion refusée ou code expiré."); });
-        socket.on('error-message', (msg) => { alert(msg); });
 
-        // --- Gestion Caméra & Zoom ---
+        // --- Gestion Caméra & Moteur de Zoom Adouci ---
         async function startCamera() {
-            if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
-            }
+            if (localStream) localStream.getTracks().forEach(track => track.stop());
 
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+                    video: { facingMode: currentFacingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
                     audio: false
                 });
 
@@ -234,6 +291,8 @@
                         e.touches[0].pageX - e.touches[1].pageX,
                         e.touches[0].pageY - e.touches[1].pageY
                     );
+                    const settings = zoomTrack.getSettings();
+                    baseZoom = settings.zoom || 1; // Sauvegarde le niveau actuel au début du geste
                 }
             });
 
@@ -247,16 +306,16 @@
                         e.touches[0].pageY - e.touches[1].pageY
                     );
 
-                    const delta = currentDist / startDist;
-                    const settings = zoomTrack.getSettings();
-                    let newZoom = settings.zoom * delta;
+                    // AJUSTEMENT DE LA SENSIBILITÉ : On applique un multiplicateur très faible (0.1) pour adoucir
+                    const delta = (currentDist - startDist) * 0.01; 
+                    let newZoom = baseZoom + delta;
 
                     newZoom = Math.max(capabilities.zoom.min, Math.min(capabilities.zoom.max, newZoom));
 
                     try {
                         await zoomTrack.applyConstraints({ advanced: [{ zoom: newZoom }] });
                     } catch (err) {
-                        console.log("Le zoom n'a pas pu s'appliquer", err);
+                        console.log("Erreur application zoom", err);
                     }
                 }
             });
