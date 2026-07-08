@@ -149,18 +149,17 @@
     <video id="full-video" class="hidden" autoplay playsinline></video>
 
     <script>
-        // METS BIEN TON URL DE RENDER ICI :
-        const socket = io('https://ton-service-render.onrender.com'); 
+        // Liaison avec ton serveur Render
+        const socket = io('https://i-see-cam-ra.onrender.com'); 
         
         let currentCode = "";
         let currentFacingMode = "environment"; 
         let localStream = null;
         let zoomTrack = null;
         let startDist = 0; 
-        let baseZoom = 1; // Stocke le niveau de zoom actuel
+        let baseZoom = 1; 
         let peerConnection = null;
 
-        // Serveurs STUN gratuits de Google pour connecter le PC et le Tél ensemble sur internet
         const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
         function switchScreen(screenId) {
@@ -168,11 +167,7 @@
             document.getElementById('viewer-screen').classList.add('hidden');
             document.getElementById('streamer-screen').classList.add('hidden');
             document.getElementById('mobile-streaming-screen').classList.add('hidden');
-            if(screenId !== 'mobile-streaming-screen' && screenId !== 'full-video') {
-                document.getElementById(screenId).classList.remove('hidden');
-            } else {
-                document.getElementById(screenId).classList.remove('hidden');
-            }
+            document.getElementById(screenId).classList.remove('hidden');
         }
 
         function goBack() {
@@ -216,7 +211,6 @@
             
             peerConnection = new RTCPeerConnection(rtcConfig);
 
-            // Gestion de l'envoi des signaux de connexion réseau
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
                     socket.emit('rtc-signal', { to: targetId, candidate: event.candidate });
@@ -224,13 +218,11 @@
             };
 
             if (isPC) {
-                // Configuration du PC pour recevoir la vidéo
                 switchScreen('full-video');
                 peerConnection.ontrack = (event) => {
                     document.getElementById('full-video').srcObject = event.streams[0];
                 };
             } else {
-                // Configuration du téléphone pour filmer et envoyer
                 switchScreen('mobile-streaming-screen');
                 await startCamera();
                 
@@ -242,14 +234,13 @@
             }
         });
 
-        // Échange des clés WebRTC via le serveur Render
         socket.on('rtc-signal', async ({ sdp, candidate }) => {
             if (sdp) {
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
                 if (peerConnection.remoteDescription.type === 'offer') {
                     const answer = await peerConnection.createAnswer();
                     await peerConnection.setLocalDescription(answer);
-                    socket.emit('rtc-signal', { to: currentCode, sdp: peerConnection.localDescription }); // Note simplifiée pour liaison directe
+                    socket.emit('rtc-signal', { to: currentCode, sdp: peerConnection.localDescription }); 
                 }
             } else if (candidate) {
                 await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
@@ -292,7 +283,7 @@
                         e.touches[0].pageY - e.touches[1].pageY
                     );
                     const settings = zoomTrack.getSettings();
-                    baseZoom = settings.zoom || 1; // Sauvegarde le niveau actuel au début du geste
+                    baseZoom = settings.zoom || 1; 
                 }
             });
 
@@ -306,7 +297,6 @@
                         e.touches[0].pageY - e.touches[1].pageY
                     );
 
-                    // AJUSTEMENT DE LA SENSIBILITÉ : On applique un multiplicateur très faible (0.1) pour adoucir
                     const delta = (currentDist - startDist) * 0.01; 
                     let newZoom = baseZoom + delta;
 
