@@ -42,6 +42,8 @@
             transition: 0.3s;
         }
         button:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,242,255,0.4); }
+        
+        /* Input optimisé : Uniquement des chiffres */
         input {
             padding: 14px;
             border-radius: 10px;
@@ -49,11 +51,13 @@
             background: #0d0d1a;
             color: white;
             text-align: center;
-            font-size: 20px;
+            font-size: 22px;
             margin-bottom: 15px;
             width: calc(100% - 30px);
-            letter-spacing: 2px;
+            letter-spacing: 4px;
+            font-weight: bold;
         }
+        
         .back-btn {
             position: absolute;
             top: 15px;
@@ -61,7 +65,7 @@
             background: none;
             border: none;
             color: #a0a0a0;
-            font-size: 20px;
+            font-size: 24px;
             cursor: pointer;
             width: auto;
             padding: 0;
@@ -70,7 +74,6 @@
         .back-btn:hover { color: #00f2ff; }
         .hidden { display: none !important; }
         
-        /* Vidéos */
         #local-preview {
             width: 100%;
             height: 200px;
@@ -87,24 +90,6 @@
             background: black;
             z-index: 99;
         }
-        .controls-overlay {
-            position: fixed;
-            bottom: 30px; left: 50%;
-            transform: translateX(-50%);
-            z-index: 100;
-            display: flex;
-            gap: 20px;
-        }
-        .circle-btn {
-            background: rgba(0, 0, 0, 0.6);
-            border: 1px solid #00f2ff;
-            color: white;
-            width: 60px; height: 60px;
-            border-radius: 50%;
-            font-size: 24px;
-            display: flex; justify-content: center; align-items: center;
-            cursor: pointer;
-        }
     </style>
 </head>
 <body>
@@ -119,14 +104,14 @@
     <div id="viewer-screen" class="container hidden">
         <button class="back-btn" onclick="goBack()">←</button>
         <h1>Code de Liaison</h1>
-        <div id="code-display" style="font-size: 36px; font-weight: bold; color: #00f2ff; margin: 20px 0; letter-spacing: 4px;">........</div>
+        <div id="code-display" style="font-size: 32px; font-weight: bold; color: #00f2ff; margin: 20px 0; letter-spacing: 2px;">GÉNÉRATION...</div>
         <p style="color: #aaa;">Entrez ce code à 8 chiffres sur votre téléphone.</p>
     </div>
 
     <div id="streamer-screen" class="container hidden">
         <button class="back-btn" onclick="goBack()">←</button>
         <h1>Connexion Sécurisée</h1>
-        <input type="tel" id="code-input" placeholder="00000000" maxlength="8">
+        <input type="text" id="code-input" placeholder="00000000" maxlength="8" inputmode="numeric" pattern="[0-9]*" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
         <button onclick="sendCode()">Demander la liaison</button>
     </div>
 
@@ -147,14 +132,14 @@
     <video id="full-video" class="hidden" autoplay playsinline></video>
 
     <script>
-        const socket = io('http://localhost:3000'); // Mettre l'IP de ton PC pour tester en Wifi local
+        // REMPLACE 'localhost' PAR L'IP DE TON PC (ex: 'http://192.168.1.50:3000') POUR TESTER AVEC TON TÉLÉPHONE EN WIFI
+        const socket = io('http://localhost:3000'); 
         let currentCode = "";
-        let currentFacingMode = "environment"; // "environment" = arrière, "user" = avant
+        let currentFacingMode = "environment"; 
         let localStream = null;
         let zoomTrack = null;
-        let startDist = 0; // Pour le Pinch-to-zoom
+        let startDist = 0; 
 
-        // --- Navigation ---
         function switchScreen(screenId) {
             document.getElementById('menu').classList.add('hidden');
             document.getElementById('viewer-screen').classList.add('hidden');
@@ -173,9 +158,12 @@
 
         // --- Logique PC (Viewer) ---
         function initViewer() {
+            // On remet le texte de chargement à chaque ouverture pour éviter de voir l'ancien code
+            document.getElementById('code-display').innerText = "GÉNÉRATION...";
             socket.emit('request-code', "Mon PC");
         }
 
+        // Réception et affichage instantané du vrai code à 8 chiffres
         socket.on('code-generated', (code) => {
             currentCode = code;
             document.getElementById('code-display').innerText = code;
@@ -200,12 +188,9 @@
 
         socket.on('connection-approved', async () => {
             if (!document.getElementById('viewer-screen').classList.contains('hidden')) {
-                // Si on est le PC -> On passe en plein écran vidéo
                 document.getElementById('viewer-screen').classList.add('hidden');
                 document.getElementById('full-video').classList.remove('hidden');
-                // (Ici se branchera la réception du flux WebRTC)
             } else {
-                // Si on est le téléphone -> On lance la caméra et l'aperçu
                 switchScreen('mobile-streaming-screen');
                 await startCamera();
             }
@@ -221,7 +206,6 @@
             }
 
             try {
-                // Configuration de la caméra avec le mode choisi
                 localStream = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
                     audio: false
@@ -230,7 +214,6 @@
                 const videoElement = document.getElementById('local-preview');
                 videoElement.srcObject = localStream;
 
-                // Récupération de la piste vidéo pour appliquer le zoom si supporté
                 zoomTrack = localStream.getVideoTracks()[0];
                 setupPinchToZoom(videoElement);
 
@@ -244,11 +227,9 @@
             await startCamera();
         }
 
-        // --- Moteur de Gestion Gestuelle : Pinch-To-Zoom ---
         function setupPinchToZoom(element) {
             element.addEventListener('touchstart', (e) => {
                 if (e.touches.length === 2) {
-                    // Calcule la distance initiale entre les deux doigts
                     startDist = Math.hypot(
                         e.touches[0].pageX - e.touches[1].pageX,
                         e.touches[0].pageY - e.touches[1].pageY
@@ -259,7 +240,6 @@
             element.addEventListener('touchmove', async (e) => {
                 if (e.touches.length === 2 && zoomTrack) {
                     const capabilities = zoomTrack.getCapabilities();
-                    // On vérifie si l'appareil supporte le zoom matériel
                     if (!capabilities.zoom) return; 
 
                     const currentDist = Math.hypot(
@@ -267,12 +247,10 @@
                         e.touches[0].pageY - e.touches[1].pageY
                     );
 
-                    // Calcul du facteur de changement
                     const delta = currentDist / startDist;
                     const settings = zoomTrack.getSettings();
                     let newZoom = settings.zoom * delta;
 
-                    // On s'assure de ne pas dépasser les limites de l'appareil
                     newZoom = Math.max(capabilities.zoom.min, Math.min(capabilities.zoom.max, newZoom));
 
                     try {
