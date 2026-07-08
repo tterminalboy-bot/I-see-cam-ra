@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CamStream Sécurisé</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            background: radial-gradient(circle, #1a1a2e 0%, #0f0f1b 100%);
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .container {
+            text-align: center;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            backdrop-filter: blur(8px);
+            border: 1px rgba(255, 255, 255, 0.1) solid;
+            max-width: 400px;
+            width: 90%;
+        }
+        h1 { color: #00adb5; font-size: 24px; margin-bottom: 20px; }
+        button {
+            background: #00adb5;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            margin: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.3s;
+            width: 80%;
+        }
+        button:hover { background: #007c82; transform: translateY(-2px); }
+        input {
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            background: #222831;
+            color: white;
+            text-align: center;
+            font-size: 18px;
+            margin-bottom: 10px;
+            width: 75%;
+        }
+        .hidden { display: none; }
+        video {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            object-fit: cover;
+            background: black;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="menu" class="container">
+        <h1>CamStream</h1>
+        <p>Choisissez le rôle de cet appareil :</p>
+        <button onclick="initViewer()">🖥️ Afficher une caméra (PC)</button>
+        <button onclick="initStreamer()">📱 Partager ma caméra (Tél)</button>
+    </div>
+
+    <div id="viewer-screen" class="container hidden">
+        <h1>Votre Code de Liaison</h1>
+        <div id="code-display" style="font-size: 32px; font-weight: bold; color: #00adb5; margin: 20px 0;">...</div>
+        <p>Entrez ce code sur votre téléphone.</p>
+    </div>
+
+    <div id="streamer-screen" class="container hidden">
+        <h1>Connexion au PC</h1>
+        <input type="text" id="code-input" placeholder="Entrez le code à 6 chiffres" maxlength="6">
+        <button onclick="sendCode()">Valider le code</button>
+    </div>
+
+    <div id="popup" class="container hidden" style="position: absolute; z-index: 10;">
+        <h1>⚠️ Demande d'accès</h1>
+        <p id="popup-text">Un appareil souhaite se connecter.</p>
+        <button onclick="respondPermission(true)" style="background: #4e9f3d;">Autoriser</button>
+        <button onclick="respondPermission(false)" style="background: #d9534f;">Refuser</button>
+    </div>
+
+    <video id="full-video" class="hidden" autoplay playsinline></video>
+
+    <script>
+        const socket = io('http://localhost:3000'); // Remplace par ton IP locale pour tester sur téléphone
+        let myDeviceName = navigator.userAgent.split(' ')[0]; // Nom d'appareil basique
+        let currentCode = "";
+
+        function hideAll() {
+            document.getElementById('menu').classList.add('hidden');
+            document.getElementById('viewer-screen').classList.add('hidden');
+            document.getElementById('streamer-screen').classList.add('hidden');
+        }
+
+        // --- Logique du PC ---
+        function initViewer() {
+            hideAll();
+            document.getElementById('viewer-screen').classList.remove('hidden');
+            socket.emit('request-code', myDeviceName);
+        }
+
+        socket.on('code-generated', (code) => {
+            currentCode = code;
+            document.getElementById('code-display').innerText = code;
+            // Ici tu pourras aussi générer un QR code avec une bibliothèque comme QRCode.js
+        });
+
+        socket.on('ask-permission', ({ streamerName, code }) => {
+            document.getElementById('popup-text').innerText = `L'appareil "${streamerName}" veut afficher sa caméra ici. C'est bien vous ?`;
+            document.getElementById('popup').classList.remove('hidden');
+        });
+
+        function respondPermission(accepted) {
+            document.getElementById('popup').classList.add('hidden');
+            socket.emit('permission-response', { code: currentCode, accepted });
+        }
+
+        // --- Logique du Téléphone ---
+        function initStreamer() {
+            hideAll();
+            document.getElementById('streamer-screen').classList.remove('hidden');
+        }
+
+        function sendCode() {
+            const code = document.getElementById('code-input').value;
+            socket.emit('verify-code', { code, deviceName: myDeviceName });
+        }
+
+        // --- Une fois la liaison validée par les deux ---
+        socket.on('connection-approved', ({ targetId }) => {
+            hideAll();
+            alert("Liaison sécurisée réussie ! Lancement du flux vidéo...");
+            // C'est ici qu'on déclenchera le flux de la caméra (WebRTC API)
+        });
+
+        socket.on('connection-denied', () => {
+            alert("Connexion refusée par l'autre appareil.");
+        });
+    </script>
+</body>
+</html>
