@@ -86,15 +86,37 @@
             height: 100%;
             object-fit: cover;
         }
+        
+        /* LIGNE DES BOUTONS EN BAS DU TÉLÉPHONE */
         .mobile-ui {
             position: absolute;
             bottom: 30px; left: 50%;
             transform: translateX(-50%);
-            width: 85%;
+            width: 90%;
             text-align: center;
             pointer-events: none;
         }
-        .mobile-ui button { pointer-events: auto; }
+        .btn-row {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .mobile-ui button { 
+            pointer-events: auto; 
+            margin: 0;
+        }
+        /* Style des boutons carrés et compacts */
+        .btn-compact {
+            width: auto;
+            flex: 1;
+            padding: 12px 10px;
+            font-size: 13px;
+            background: rgba(0,0,0,0.7);
+            border: 1px solid #00f2ff;
+            border-radius: 8px;
+            white-space: nowrap;
+        }
 
         /* PLEIN ÉCRAN PC POUR LE FLUX FINAL */
         #full-video {
@@ -133,9 +155,12 @@
     <div id="mobile-streaming-screen" class="hidden">
         <video id="local-preview" autoplay playsinline muted></video>
         <div class="mobile-ui">
-            <p style="color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.8); font-size: 14px; margin-bottom: 10px;">Pincez l'écran pour zoomer</p>
-            <button onclick="toggleCamera()" style="background: rgba(0,0,0,0.6); border: 1px solid #00f2ff;">🔄 Changer de caméra</button>
-            <button onclick="goBack()" style="background: rgba(220,53,69,0.6); margin-top: 5px;">Quitter</button>
+            <p style="color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.8); font-size: 13px;">Pincez l'écran pour zoomer</p>
+            <div class="btn-row">
+                <button class="btn-compact" onclick="toggleCamera()">🔄 Renverser la caméra</button>
+                <button class="btn-compact" onclick="toggleFullScreenMobile()">🔲 Plein écran</button>
+                <button class="btn-compact" onclick="goBack()" style="background: rgba(220,53,69,0.7); border-color: #dc3545;">Quitter</button>
+            </div>
         </div>
     </div>
 
@@ -210,12 +235,23 @@
 
         // --- Logique Téléphone (Streamer) ---
         function sendCode() {
-            const code = document.getElementById('code-input').value;
-            currentCode = code;
-            socket.emit('verify-code', { code, deviceName: "Mon Smartphone" });
+            const codeInput = document.getElementById('code-input');
+            currentCode = codeInput.value;
+            socket.emit('verify-code', { code: currentCode, deviceName: "Mon Smartphone" });
         }
 
-        // --- DÉCLENCHEMENT DE LA VIDÉO (WebRTC) ---
+        // Erreur de code : On affiche un message clair et on vide la case
+        socket.on('error-message', (msg) => {
+            alert("Erreur : " + msg);
+            document.getElementById('code-input').value = ""; 
+        });
+
+        socket.on('connection-denied', () => { 
+            alert("Connexion refusée par le PC."); 
+            document.getElementById('code-input').value = "";
+        });
+
+        // --- DÉCLENCHEMENT DE LA VIDÉO (WebRTC corrigé) ---
         socket.on('connection-approved', async ({ targetId }) => {
             targetDeviceID = targetId;
             const isPC = !document.getElementById('viewer-screen').classList.contains('hidden');
@@ -228,7 +264,6 @@
                 }
             };
 
-            // Surveillance de l'état de la connexion WebRTC brute
             peerConnection.onconnectionstatechange = () => {
                 if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
                     goBack();
@@ -238,12 +273,16 @@
             if (isPC) {
                 switchScreen('full-video');
                 peerConnection.ontrack = (event) => {
-                    document.getElementById('full-video').srcObject = event.streams[0];
+                    // Force l'affichage du flux vidéo reçu sur l'ordinateur
+                    const pcVideo = document.getElementById('full-video');
+                    pcVideo.srcObject = event.streams[0];
+                    pcVideo.play().catch(e => console.log("Erreur lecture vidéo PC:", e));
                 };
             } else {
                 switchScreen('mobile-streaming-screen');
                 await startCamera();
                 
+                // On attache bien le flux local pour qu'il soit envoyé au PC
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
                 
                 const offer = await peerConnection.createOffer();
@@ -266,14 +305,11 @@
             }
         });
 
-        // Gestion de la déconnexion volontaire via signal réseau
         socket.on('rtc-disconnect', () => {
             goBack();
         });
 
-        socket.on('connection-denied', () => { alert("Connexion refusée ou code expiré."); });
-
-        // --- Gestion Caméra & Moteur de Zoom Adouci ---
+        // --- Gestion Caméra & Moteur de Zoom ---
         async function startCamera() {
             if (localStream) localStream.getTracks().forEach(track => track.stop());
 
@@ -304,6 +340,17 @@
                 if (sender) {
                     sender.replaceTrack(videoTrack);
                 }
+            }
+        }
+
+        // Mode plein écran natif pour le navigateur du téléphone
+        function toggleFullScreenMobile() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.log(`Erreur plein écran: ${err.message}`);
+                });
+            } else {
+                document.exitFullscreen();
             }
         }
 
