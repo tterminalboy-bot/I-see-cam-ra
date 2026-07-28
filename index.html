@@ -472,7 +472,7 @@
             if (localStream) localStream.getTracks().forEach(track => track.stop());
 
             try {
-                if (selectedType === 'camera') {
+                if (selectedType === 'camera' || !navigator.mediaDevices.getDisplayMedia) {
                     localStream = await navigator.mediaDevices.getUserMedia({
                         video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
                         audio: false
@@ -480,24 +480,8 @@
                     zoomTrack = localStream.getVideoTracks()[0];
                     setupPinchToZoom(document.getElementById('local-preview'));
                 } else {
-                    const isAndroid = /Android/i.test(navigator.userAgent);
-                    
-                    if (isAndroid && !navigator.mediaDevices.getDisplayMedia) {
-                        alert("Sur Android, utilise le navigateur 'Samsung Internet' ou active 'Version pour ordinateur' dans Chrome pour autoriser le partage d'écran.");
-                        return false;
-                    }
-
-                    if (!navigator.mediaDevices.getDisplayMedia) {
-                        alert("Le partage d'écran WebRTC n'est pas activé sur ce navigateur mobile.");
-                        return false;
-                    }
-
                     localStream = await navigator.mediaDevices.getDisplayMedia({
-                        video: {
-                            displaySurface: "monitor",
-                            logicalSurface: true,
-                            cursor: "always"
-                        },
+                        video: { displaySurface: "monitor" },
                         audio: false
                     });
                     localStream.getVideoTracks()[0].onended = () => goBack();
@@ -508,7 +492,6 @@
                 return true;
 
             } catch (err) {
-                alert("Erreur de capture : " + err.message);
                 return false;
             }
         }
