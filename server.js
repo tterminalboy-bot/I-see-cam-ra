@@ -1,50 +1,88 @@
-// Stockage dynamique des codes actifs
-const activeCodes = {};
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
 
-// 1. Génération du code
-socket.on('request-code', (data) => {
-    // Génère un code à 6 chiffres
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    // On enregistre le socket, le code et LE TYPE STRICT ("camera" ou "screen")
-    activeCodes[code] = {
-        socketId: socket.id,
-        type: data.type
-    };
-
-    // On renvoie le code au récepteur
-    socket.emit('code-generated', code);
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: { origin: "*" }
 });
 
-// 2. Vérification du code par l'émetteur
-socket.on('verify-code', ({ code, deviceName, type }) => {
-    const target = activeCodes[code];
+const activeCodes = {};
 
-    // VÉRIFICATION 1 : Est-ce que le code existe ?
-    if (!target) {
-        socket.emit('error-message', 'Code invalide ou expiré.');
-        return;
-    }
+io.on('connection', (socket) => {
 
-    // VÉRIFICATION 2 : SÉCURITÉ STRICTE DU TYPE (Bloque immédiatement si ça ne correspond pas)
-    if (target.type !== type) {
-        // On retourne délibérément le message "Code invalide" pour ne donner aucune info
-        socket.emit('error-message', 'Code invalide pour ce mode de diffusion.');
-        return;
-    }
+    // 1. Génération du code avec préfixe interne
+    socket.on('request-code', (data) => {
+        const prefix = (data.type === 'camera') ? 'C-' : 'S-';
+        const randomNumber = Math.floor(100000 + Math.random() * 900000).toString();
+        const fullCode = prefix + randomNumber; // Ex: "C-123456" ou "S-123456"
+        
+        activeCodes[fullCode] = {
+            socketId: socket.id,
+            type: data.type
+        };
 
-    // Si le type correspond PARFAITEMENT, on demande la permission au récepteur
-    io.to(target.socketId).emit('ask-permission', { 
-        streamerId: socket.id, 
-        streamerName: deviceName 
+        socket.emit('code-generated', fullCode);
+    });
+
+    // 2. Vérification stricte du code
+    socket.on('verify-code', ({ code, deviceName, type }) => {
+        const codeNettoye = code.trim().toUpperCase();
+        const target = activeCodes[codeNettoye];
+
+        if (!target) {
+            socket.emit('error-message', 'Code invalide ou expiré.');
+            return;
+        }
+
+        if (target.type !== type) {
+            socket.emit('error-message', 'Code invalide pour ce mode de diffusion.');
+            return;
+        }
+
+        io.to(target.socketId).emit('ask-permission', { 
+            streamerId: socket.id, 
+            streamerName: deviceName 
+        });
+    });
+
+    // 3. Gestion des autorisations & signaux WebRTC
+    socket.on('permission-response', ({ code, accepted }) => {
+        const target = activeCodes[code];
+        if (target) {
+            if (accepted) {
+                io.to(target.socketId).emit('connection-approved', { targetId: socket.id });
+                socket.emit('connection-approved', { targetId: target.socketId });
+            } else {
+                io.to(target.socketId).emit('connection-denied');
+            }
+        }
+    });
+
+    socket.on('rtc-signal', ({ to, sdp, candidate }) => {
+        io.to(to).emit('rtc-signal', { sdp, candidate });
+    });
+
+    socket.on('request-reselect', ({ to }) => {
+        io.to(to).emit('request-reselect');
+    });
+
+    socket.on('rtc-disconnect', ({ to }) => {
+        io.to(to).emit('rtc-disconnect');
+    });
+
+    // Nettoyage lors de la déconnexion
+    socket.on('disconnect', () => {
+        for (const code in activeCodes) {
+            if (activeCodes[code].socketId === socket.id) {
+                delete activeCodes[code];
+            }
+        }
     });
 });
 
-// Nettoyage automatique des codes quand un utilisateur se déconnecte
-socket.on('disconnect', () => {
-    for (const code in activeCodes) {
-        if (activeCodes[code].socketId === socket.id) {
-            delete activeCodes[code];
-        }
-    }
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`Serveur démarré sur le port ${PORT}`);
 });
