@@ -84,18 +84,39 @@
         .theme-screen button { background: linear-gradient(135deg, #e040fb, #4a00e0); }
         button:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,242,255,0.4); }
 
-        input {
-            padding: 14px;
-            border-radius: 10px;
-            border: 1px solid #222;
+        .input-wrapper {
+            display: flex;
+            align-items: center;
+            justify-content: center;
             background: #0d0d1a;
-            color: white;
-            text-align: center;
-            font-size: 26px;
+            border: 1px solid #222;
+            border-radius: 10px;
             margin-bottom: 15px;
-            width: calc(100% - 30px);
-            letter-spacing: 6px;
+            padding: 0 10px;
+        }
+
+        .input-prefix {
+            font-size: 26px;
             font-weight: bold;
+            color: #00f2ff;
+            user-select: none;
+        }
+
+        .theme-screen .input-prefix {
+            color: #e040fb;
+        }
+
+        input {
+            padding: 14px 5px;
+            border: none;
+            background: transparent;
+            color: white;
+            text-align: left;
+            font-size: 26px;
+            width: 100%;
+            letter-spacing: 4px;
+            font-weight: bold;
+            outline: none;
         }
         
         .back-btn {
@@ -205,7 +226,7 @@
         <h1 id="menu-title">Configuration</h1>
         <p style="color: #aaa;">Sélectionnez le rôle de cet appareil :</p>
         <button onclick="switchScreen('viewer-screen'); initViewer();">🖥️ Récepteur (Afficher ici)</button>
-        <button onclick="switchScreen('streamer-screen');">📱 Émetteur (Envoyer le flux)</button>
+        <button onclick="switchScreen('streamer-screen'); setupStreamerInput();">📱 Émetteur (Envoyer le flux)</button>
     </div>
 
     <div id="viewer-screen" class="container hidden">
@@ -213,14 +234,17 @@
         <div id="viewer-badge" class="mode-badge"></div>
         <h1>Code de Liaison</h1>
         <div id="code-display" style="font-size: 36px; font-weight: bold; color: #00f2ff; margin: 20px 0; letter-spacing: 4px;">......</div>
-        <p style="color: #aaa;">Entrez ce code à 6 chiffres sur l'émetteur.</p>
+        <p style="color: #aaa;">Entrez ce code sur l'émetteur.</p>
     </div>
 
     <div id="streamer-screen" class="container hidden">
         <button class="back-btn" onclick="goBack()">←</button>
         <div id="streamer-badge" class="mode-badge"></div>
         <h1>Connexion</h1>
-        <input type="text" id="code-input" placeholder="000000" maxlength="6" inputmode="numeric" pattern="[0-9]*" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+        <div class="input-wrapper">
+            <span id="code-prefix" class="input-prefix">C-</span>
+            <input type="text" id="code-input" placeholder="000000" maxlength="6" inputmode="numeric" pattern="[0-9]*" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+        </div>
         <button onclick="sendCode()">Demander la liaison</button>
     </div>
 
@@ -310,6 +334,12 @@
             });
         }
 
+        function setupStreamerInput() {
+            const prefixElem = document.getElementById('code-prefix');
+            prefixElem.innerText = (selectedType === 'camera') ? "C-" : "S-";
+            document.getElementById('code-input').value = "";
+        }
+
         function goToPreMenu() {
             document.getElementById('app-body').className = '';
             switchScreen('pre-menu');
@@ -342,7 +372,6 @@
 
         function initViewer() {
             document.getElementById('code-display').innerText = "......";
-            // TRANSMISSION DU TYPE AU SERVEUR (camera ou screen)
             socket.emit('request-code', { role: "Récepteur", type: selectedType });
         }
 
@@ -363,10 +392,17 @@
         }
 
         function sendCode() {
-            const input = document.getElementById('code-input');
-            currentCode = input.value;
-            // TRANSMISSION DU TYPE LORS DE LA VÉRIFICATION DU CODE
-            socket.emit('verify-code', { code: currentCode, deviceName: "Émetteur", type: selectedType });
+            const input = document.getElementById('code-input').value.trim();
+            const prefix = (selectedType === 'camera') ? "C-" : "S-";
+            
+            if(input.length !== 6) {
+                alert("Veuillez entrer un code complet à 6 chiffres.");
+                return;
+            }
+
+            const fullCodeToSend = prefix + input;
+            currentCode = fullCodeToSend;
+            socket.emit('verify-code', { code: fullCodeToSend, deviceName: "Émetteur", type: selectedType });
         }
 
         socket.on('error-message', (msg) => {
