@@ -191,7 +191,21 @@
         <h1 id="menu-title">Configuration</h1>
         <p style="color: #aaa;">Sélectionnez le rôle de cet appareil :</p>
         <button onclick="switchScreen('viewer-screen'); initViewer();">🖥️ Récepteur (Afficher ici)</button>
-        <button onclick="switchScreen('streamer-screen');">📱 Émetteur (Envoyer le flux)</button>
+        <button onclick="handleStreamerChoice()">📱 Émetteur (Envoyer le flux)</button>
+    </div>
+
+    <div id="mobile-warning-screen" class="container hidden">
+        <button class="back-btn" onclick="switchScreen('menu')">←</button>
+        <h1 style="color: #ff4757;">⚠️ Action requise</h1>
+        <p style="color: #ddd; margin: 20px 0; line-height: 1.5;">
+            Pour partager l'écran depuis un téléphone, vous devez <strong>passer votre navigateur en mode ordinateur</strong>.
+        </p>
+        <p style="color: #aaa; font-size: 13px; text-align: left; background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px;">
+            1. Cliquez sur les <strong>3 petits points</strong> en haut à droite du navigateur.<br>
+            2. Cochez la case <strong>« Version pour ordinateur »</strong>.<br>
+            3. Relancez l'action.
+        </p>
+        <button onclick="switchScreen('menu')" style="background: #ff4757; margin-top: 15px;">J'ai compris</button>
     </div>
 
     <div id="viewer-screen" class="container hidden">
@@ -263,6 +277,18 @@
 
         const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
+        function isMobileDevice() {
+            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        }
+
+        function handleStreamerChoice() {
+            if (selectedType === 'screen' && isMobileDevice() && !navigator.mediaDevices.getDisplayMedia) {
+                switchScreen('mobile-warning-screen');
+            } else {
+                switchScreen('streamer-screen');
+            }
+        }
+
         function selectStreamType(type) {
             selectedType = type;
             const body = document.getElementById('app-body');
@@ -302,7 +328,7 @@
         }
 
         function switchScreen(screenId) {
-            ['pre-menu', 'menu', 'viewer-screen', 'streamer-screen', 'start-share-screen', 'mobile-streaming-screen', 'video-container'].forEach(id => {
+            ['pre-menu', 'menu', 'mobile-warning-screen', 'viewer-screen', 'streamer-screen', 'start-share-screen', 'mobile-streaming-screen', 'video-container'].forEach(id => {
                 document.getElementById(id).classList.add('hidden');
             });
             document.getElementById(screenId).classList.remove('hidden');
@@ -472,7 +498,7 @@
             if (localStream) localStream.getTracks().forEach(track => track.stop());
 
             try {
-                if (selectedType === 'camera' || !navigator.mediaDevices.getDisplayMedia) {
+                if (selectedType === 'camera') {
                     localStream = await navigator.mediaDevices.getUserMedia({
                         video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
                         audio: false
@@ -480,8 +506,13 @@
                     zoomTrack = localStream.getVideoTracks()[0];
                     setupPinchToZoom(document.getElementById('local-preview'));
                 } else {
+                    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+                        alert("Le partage d'écran n'est pas pris en charge en mode mobile. Activez l'option 'Version pour ordinateur'.");
+                        return false;
+                    }
+
                     localStream = await navigator.mediaDevices.getDisplayMedia({
-                        video: { displaySurface: "monitor" },
+                        video: true,
                         audio: false
                     });
                     localStream.getVideoTracks()[0].onended = () => goBack();
@@ -492,6 +523,7 @@
                 return true;
 
             } catch (err) {
+                alert("Erreur de capture : " + err.message);
                 return false;
             }
         }
