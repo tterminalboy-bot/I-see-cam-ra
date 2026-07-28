@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>I see camra</title>
+    <title>CamLink Pro</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body {
@@ -106,7 +106,6 @@
             pointer-events: auto; 
             margin: 0;
         }
-        /* Style des boutons carrés et compacts */
         .btn-compact {
             width: auto;
             flex: 1;
@@ -131,18 +130,26 @@
 </head>
 <body>
 
-    <div id="menu" class="container">
-        <h1>I see camra</h1>
-        <p style="color: #aaa;">Sélectionnez le rôle de cet appareil :</p>
-        <button onclick="switchScreen('viewer-screen'); initViewer();">🖥️ Afficher la caméra (PC)</button>
-        <button onclick="switchScreen('streamer-screen');">📱 Partager ma caméra (Tél)</button>
+    <div id="pre-menu" class="container">
+        <h1>CamLink Pro</h1>
+        <p style="color: #aaa;">Sélectionnez ce que vous souhaitez diffuser :</p>
+        <button onclick="selectStreamType('camera')">📷 Partager une Caméra</button>
+        <button onclick="selectStreamType('screen')">🖥️ Partager un Écran</button>
+    </div>
+
+    <div id="menu" class="container hidden">
+        <button class="back-btn" onclick="goToPreMenu()">←</button>
+        <h1 id="menu-title">CamLink Pro</h1>
+        <p style="color: #aaa;">Choisir la fonctionnalité de cet appareil :</p>
+        <button onclick="switchScreen('viewer-screen'); initViewer();">🖥️ Recevoir le flux (PC)</button>
+        <button onclick="switchScreen('streamer-screen');">📱 Émettre le flux (Tél/PC)</button>
     </div>
 
     <div id="viewer-screen" class="container hidden">
         <button class="back-btn" onclick="goBack()">←</button>
         <h1>Code de Liaison</h1>
         <div id="code-display" style="font-size: 32px; font-weight: bold; color: #00f2ff; margin: 20px 0; letter-spacing: 2px;">GÉNÉRATION...</div>
-        <p style="color: #aaa;">Entrez ce code à 8 chiffres sur votre téléphone.</p>
+        <p style="color: #aaa;">Entrez ce code à 8 chiffres sur l'autre appareil.</p>
     </div>
 
     <div id="streamer-screen" class="container hidden">
@@ -155,9 +162,9 @@
     <div id="mobile-streaming-screen" class="hidden">
         <video id="local-preview" autoplay playsinline muted></video>
         <div class="mobile-ui">
-            <p style="color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.8); font-size: 13px;">Pincez l'écran pour zoomer</p>
+            <p id="zoom-text" style="color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.8); font-size: 13px;">Pincez l'écran pour zoomer</p>
             <div class="btn-row">
-                <button class="btn-compact" onclick="toggleCamera()">🔄 Renverser la caméra</button>
+                <button id="cam-toggle-btn" class="btn-compact" onclick="toggleCamera()">🔄 Renverser la caméra</button>
                 <button class="btn-compact" onclick="toggleFullScreenMobile()">🔲 Plein écran</button>
                 <button class="btn-compact" onclick="goBack()" style="background: rgba(220,53,69,0.7); border-color: #dc3545;">Quitter</button>
             </div>
@@ -176,6 +183,7 @@
     <script>
         const socket = io('https://i-see-cam-ra.onrender.com'); 
         
+        let selectedType = 'camera'; // 'camera' ou 'screen'
         let currentCode = "";
         let currentFacingMode = "environment"; 
         let localStream = null;
@@ -187,7 +195,33 @@
 
         const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
+        // --- NOUVELLE LOGIQUE PRÉ-MENU ---
+        function selectStreamType(type) {
+            selectedType = type;
+            document.getElementById('pre-menu').classList.add('hidden');
+            document.getElementById('menu').classList.remove('hidden');
+
+            const title = document.getElementById('menu-title');
+            const camBtn = document.getElementById('cam-toggle-btn');
+            const zoomText = document.getElementById('zoom-text');
+
+            if (type === 'camera') {
+                title.innerText = "Mode Caméra";
+                camBtn.classList.remove('hidden');
+                zoomText.classList.remove('hidden');
+            } else {
+                title.innerText = "Partage d'Écran";
+                camBtn.classList.add('hidden'); // Caché car pas de changement de caméra en partage d'écran
+                zoomText.classList.add('hidden');
+            }
+        }
+
+        function goToPreMenu() {
+            switchScreen('pre-menu');
+        }
+
         function switchScreen(screenId) {
+            document.getElementById('pre-menu').classList.add('hidden');
             document.getElementById('menu').classList.add('hidden');
             document.getElementById('viewer-screen').classList.add('hidden');
             document.getElementById('streamer-screen').classList.add('hidden');
@@ -224,7 +258,8 @@
         });
 
         socket.on('ask-permission', ({ streamerName, code }) => {
-            document.getElementById('popup-text').innerText = `L'appareil "${streamerName}" veut diffuser sa caméra ici. Confirmez-vous ?`;
+            const modeName = selectedType === 'camera' ? 'sa caméra' : 'son écran';
+            document.getElementById('popup-text').innerText = `L'appareil "${streamerName}" veut diffuser ${modeName} ici. Confirmez-vous ?`;
             document.getElementById('popup').classList.remove('hidden');
         });
 
@@ -233,25 +268,24 @@
             socket.emit('permission-response', { code: currentCode, accepted });
         }
 
-        // --- Logique Téléphone (Streamer) ---
+        // --- Logique Téléphone/Émetteur (Streamer) ---
         function sendCode() {
             const codeInput = document.getElementById('code-input');
             currentCode = codeInput.value;
-            socket.emit('verify-code', { code: currentCode, deviceName: "Mon Smartphone" });
+            socket.emit('verify-code', { code: currentCode, deviceName: "Appareil distant" });
         }
 
-        // Erreur de code : On affiche un message clair et on vide la case
         socket.on('error-message', (msg) => {
             alert("Erreur : " + msg);
             document.getElementById('code-input').value = ""; 
         });
 
         socket.on('connection-denied', () => { 
-            alert("Connexion refusée par le PC."); 
+            alert("Connexion refusée par le destinataire."); 
             document.getElementById('code-input').value = "";
         });
 
-        // --- DÉCLENCHEMENT DE LA VIDÉO (WebRTC corrigé) ---
+        // --- DÉCLENCHEMENT DU FLUX (WebRTC) ---
         socket.on('connection-approved', async ({ targetId }) => {
             targetDeviceID = targetId;
             const isPC = !document.getElementById('viewer-screen').classList.contains('hidden');
@@ -273,16 +307,14 @@
             if (isPC) {
                 switchScreen('full-video');
                 peerConnection.ontrack = (event) => {
-                    // Force l'affichage du flux vidéo reçu sur l'ordinateur
                     const pcVideo = document.getElementById('full-video');
                     pcVideo.srcObject = event.streams[0];
                     pcVideo.play().catch(e => console.log("Erreur lecture vidéo PC:", e));
                 };
             } else {
                 switchScreen('mobile-streaming-screen');
-                await startCamera();
+                await startMediaStream();
                 
-                // On attache bien le flux local pour qu'il soit envoyé au PC
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
                 
                 const offer = await peerConnection.createOffer();
@@ -309,30 +341,40 @@
             goBack();
         });
 
-        // --- Gestion Caméra & Moteur de Zoom ---
-        async function startCamera() {
+        // --- Capturer Caméra OU Écran selon le choix du pré-menu ---
+        async function startMediaStream() {
             if (localStream) localStream.getTracks().forEach(track => track.stop());
 
             try {
-                localStream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: currentFacingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
-                    audio: false
-                });
+                if (selectedType === 'camera') {
+                    // Capture la caméra
+                    localStream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: currentFacingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
+                        audio: false
+                    });
+                    zoomTrack = localStream.getVideoTracks()[0];
+                    setupPinchToZoom(document.getElementById('local-preview'));
+                } else {
+                    // Capture l'écran du téléphone ou PC
+                    localStream = await navigator.mediaDevices.getDisplayMedia({
+                        video: true,
+                        audio: false
+                    });
+                }
 
                 const videoElement = document.getElementById('local-preview');
                 videoElement.srcObject = localStream;
 
-                zoomTrack = localStream.getVideoTracks()[0];
-                setupPinchToZoom(videoElement);
-
             } catch (err) {
-                alert("Erreur d'accès à la caméra : " + err.message);
+                alert("Erreur d'accès au flux : " + err.message);
+                goBack();
             }
         }
 
         async function toggleCamera() {
+            if (selectedType !== 'camera') return;
             currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
-            await startCamera();
+            await startMediaStream();
             if (peerConnection && localStream) {
                 const senders = peerConnection.getSenders();
                 const videoTrack = localStream.getVideoTracks()[0];
@@ -343,12 +385,9 @@
             }
         }
 
-        // Mode plein écran natif pour le navigateur du téléphone
         function toggleFullScreenMobile() {
             if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(err => {
-                    console.log(`Erreur plein écran: ${err.message}`);
-                });
+                document.documentElement.requestFullscreen().catch(err => console.log(err));
             } else {
                 document.exitFullscreen();
             }
@@ -367,7 +406,7 @@
             });
 
             element.addEventListener('touchmove', async (e) => {
-                if (e.touches.length === 2 && zoomTrack) {
+                if (e.touches.length === 2 && zoomTrack && selectedType === 'camera') {
                     const capabilities = zoomTrack.getCapabilities();
                     if (!capabilities.zoom) return; 
 
@@ -384,7 +423,7 @@
                     try {
                         await zoomTrack.applyConstraints({ advanced: [{ zoom: newZoom }] });
                     } catch (err) {
-                        console.log("Erreur application zoom", err);
+                        console.log("Erreur zoom", err);
                     }
                 }
             });
