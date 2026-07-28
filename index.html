@@ -44,7 +44,6 @@
         .theme-camera .container { border-color: rgba(0, 242, 255, 0.3); }
         .theme-screen .container { border-color: rgba(224, 64, 251, 0.3); }
 
-        /* Style du Logo principal */
         .app-logo {
             width: 90px;
             height: 90px;
@@ -343,7 +342,8 @@
 
         function initViewer() {
             document.getElementById('code-display').innerText = "......";
-            socket.emit('request-code', "Récepteur");
+            // TRANSMISSION DU TYPE AU SERVEUR (camera ou screen)
+            socket.emit('request-code', { role: "Récepteur", type: selectedType });
         }
 
         socket.on('code-generated', (code) => {
@@ -365,7 +365,8 @@
         function sendCode() {
             const input = document.getElementById('code-input');
             currentCode = input.value;
-            socket.emit('verify-code', { code: currentCode, deviceName: "Émetteur" });
+            // TRANSMISSION DU TYPE LORS DE LA VÉRIFICATION DU CODE
+            socket.emit('verify-code', { code: currentCode, deviceName: "Émetteur", type: selectedType });
         }
 
         socket.on('error-message', (msg) => {
