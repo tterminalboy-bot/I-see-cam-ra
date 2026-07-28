@@ -10,9 +10,9 @@ const pendingConnections = {};
 
 io.on('connection', (socket) => {
     
-    // 1. Demande de code par le PC
+    // 1. Demande de code à 6 chiffres par le PC / Récepteur
     socket.on('request-code', (deviceName) => {
-        const code = Math.floor(10000000 + Math.random() * 90000000).toString(); 
+        const code = Math.floor(100000 + Math.random() * 900000).toString(); 
         pendingConnections[code] = {
             viewerId: socket.id,
             viewerName: deviceName,
@@ -21,25 +21,23 @@ io.on('connection', (socket) => {
         socket.emit('code-generated', code);
     });
 
-    // 2. Vérification du code par le téléphone
+    // 2. Vérification du code par l'Émetteur
     socket.on('verify-code', ({ code, deviceName }) => {
         if (pendingConnections[code]) {
             const session = pendingConnections[code];
             session.streamerId = socket.id;
-            // On envoie la demande d'autorisation au PC
             io.to(session.viewerId).emit('ask-permission', { streamerName: deviceName, code });
         } else {
             socket.emit('error-message', 'Code invalide.');
         }
     });
 
-    // 3. Réponse d'autorisation du PC
+    // 3. Réponse d'autorisation
     socket.on('permission-response', ({ code, accepted }) => {
         const session = pendingConnections[code];
         if (!session) return;
 
         if (accepted) {
-            // Liaison acceptée : on donne l'identifiant de l'un à l'autre
             io.to(session.streamerId).emit('connection-approved', { targetId: session.viewerId });
             io.to(session.viewerId).emit('connection-approved', { targetId: session.streamerId });
         } else {
@@ -48,18 +46,22 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 4. TRANSFERT DES SIGNAUX VIDÉO (L'élément manquant !)
+    // 4. DEMANDE DE NOUVELLE CAPTURE (Pour changer d'application / d'écran)
+    socket.on('request-reselect', ({ to }) => {
+        io.to(to).emit('request-reselect');
+    });
+
+    // 5. TRANSFERT DES SIGNAUX VIDÉO
     socket.on('rtc-signal', ({ to, sdp, candidate }) => {
         io.to(to).emit('rtc-signal', { sdp, candidate });
     });
 
-    // 5. GESTION DE LA DÉCONNEXION VOLONTAIRE
+    // 6. GESTION DE LA DÉCONNEXION VOLONTAIRE
     socket.on('rtc-disconnect', ({ to }) => {
         io.to(to).emit('rtc-disconnect');
     });
 
     socket.on('disconnect', () => {
-        // Nettoyage automatique si un appareil se ferme brusquement
         for (const code in pendingConnections) {
             if (pendingConnections[code].viewerId === socket.id || pendingConnections[code].streamerId === socket.id) {
                 const target = pendingConnections[code].viewerId === socket.id ? pendingConnections[code].streamerId : pendingConnections[code].viewerId;
@@ -70,6 +72,5 @@ io.on('connection', (socket) => {
     });
 });
 
-// Adaptation dynamique du port pour Render
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Serveur CamLink Pro actif sur le port ${PORT}`));
