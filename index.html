@@ -19,13 +19,8 @@
             transition: background 0.5s ease;
         }
         
-        /* THÈMES VISUELS DISTINCTS */
-        body.theme-camera {
-            background: radial-gradient(circle, #002b36 0%, #020b14 100%);
-        }
-        body.theme-screen {
-            background: radial-gradient(circle, #2a0036 0%, #0f0214 100%);
-        }
+        body.theme-camera { background: radial-gradient(circle, #002b36 0%, #020b14 100%); }
+        body.theme-screen { background: radial-gradient(circle, #2a0036 0%, #0f0214 100%); }
 
         .container {
             text-align: center;
@@ -39,7 +34,6 @@
             position: relative;
             z-index: 10;
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            transition: border-color 0.4s ease;
         }
 
         .theme-camera .container { border-color: rgba(0, 242, 255, 0.3); }
@@ -47,7 +41,6 @@
 
         h1 { font-size: 26px; margin-bottom: 15px; }
         
-        /* BADGE VISUEL D'ONGLET ACTIF */
         .mode-badge {
             display: inline-block;
             padding: 6px 14px;
@@ -74,12 +67,8 @@
             transition: 0.3s;
         }
         
-        .theme-screen button {
-            background: linear-gradient(135deg, #e040fb, #4a00e0);
-        }
-
+        .theme-screen button { background: linear-gradient(135deg, #e040fb, #4a00e0); }
         button:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,242,255,0.4); }
-        .theme-screen button:hover { box-shadow: 0 5px 15px rgba(224,64,251,0.4); }
 
         input {
             padding: 14px;
@@ -88,10 +77,10 @@
             background: #0d0d1a;
             color: white;
             text-align: center;
-            font-size: 22px;
+            font-size: 26px;
             margin-bottom: 15px;
             width: calc(100% - 30px);
-            letter-spacing: 4px;
+            letter-spacing: 6px;
             font-weight: bold;
         }
         
@@ -111,7 +100,6 @@
         }
         .hidden { display: none !important; }
         
-        /* RETOUR MOBILE PLEIN ÉCRAN */
         #mobile-streaming-screen {
             position: fixed;
             top: 0; left: 0;
@@ -139,10 +127,7 @@
             gap: 10px;
             margin-top: 10px;
         }
-        .mobile-ui button { 
-            pointer-events: auto; 
-            margin: 0;
-        }
+        .mobile-ui button { pointer-events: auto; margin: 0; }
         .btn-compact {
             width: auto;
             flex: 1;
@@ -154,7 +139,6 @@
             white-space: nowrap;
         }
 
-        /* PLEIN ÉCRAN PC POUR LE FLUX FINAL */
         #full-video {
             position: fixed;
             top: 0; left: 0;
@@ -187,16 +171,23 @@
         <button class="back-btn" onclick="goBack()">←</button>
         <div id="viewer-badge" class="mode-badge"></div>
         <h1>Code de Liaison</h1>
-        <div id="code-display" style="font-size: 32px; font-weight: bold; color: #00f2ff; margin: 20px 0; letter-spacing: 2px;">GÉNÉRATION...</div>
-        <p style="color: #aaa;">Entrez ce code à 8 chiffres sur l'émetteur.</p>
+        <div id="code-display" style="font-size: 36px; font-weight: bold; color: #00f2ff; margin: 20px 0; letter-spacing: 4px;">......</div>
+        <p style="color: #aaa;">Entrez ce code à 6 chiffres sur l'émetteur.</p>
     </div>
 
     <div id="streamer-screen" class="container hidden">
         <button class="back-btn" onclick="goBack()">←</button>
         <div id="streamer-badge" class="mode-badge"></div>
         <h1>Connexion Sécurisée</h1>
-        <input type="text" id="code-input" placeholder="00000000" maxlength="8" inputmode="numeric" pattern="[0-9]*" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+        <input type="text" id="code-input" placeholder="000000" maxlength="6" inputmode="numeric" pattern="[0-9]*" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
         <button onclick="sendCode()">Demander la liaison</button>
+    </div>
+
+    <div id="start-share-screen" class="container hidden">
+        <div id="share-badge" class="mode-badge"></div>
+        <h1>Liaison Autorisée</h1>
+        <p style="color: #aaa; margin-bottom: 20px;">Cliquez sur le bouton ci-dessous pour valider la capture :</p>
+        <button id="start-stream-btn" onclick="confirmAndStartStream()">▶️ Lancer la diffusion</button>
     </div>
 
     <div id="mobile-streaming-screen" class="hidden">
@@ -235,12 +226,10 @@
 
         const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-        // --- GESTION VISUELLE DES ONGLETS & THÈMES ---
         function selectStreamType(type) {
             selectedType = type;
             const body = document.getElementById('app-body');
             
-            // Changement dynamique du fond et des badges
             if (type === 'camera') {
                 body.className = 'theme-camera';
                 updateBadges("📷 Mode Caméra", "badge-cam");
@@ -257,10 +246,12 @@
         }
 
         function updateBadges(text, badgeClass) {
-            ['current-badge', 'viewer-badge', 'streamer-badge'].forEach(id => {
+            ['current-badge', 'viewer-badge', 'streamer-badge', 'share-badge'].forEach(id => {
                 const badge = document.getElementById(id);
-                badge.innerText = text;
-                badge.className = 'mode-badge ' + badgeClass;
+                if (badge) {
+                    badge.innerText = text;
+                    badge.className = 'mode-badge ' + badgeClass;
+                }
             });
         }
 
@@ -270,7 +261,7 @@
         }
 
         function switchScreen(screenId) {
-            ['pre-menu', 'menu', 'viewer-screen', 'streamer-screen', 'mobile-streaming-screen'].forEach(id => {
+            ['pre-menu', 'menu', 'viewer-screen', 'streamer-screen', 'start-share-screen', 'mobile-streaming-screen'].forEach(id => {
                 document.getElementById(id).classList.add('hidden');
             });
             document.getElementById(screenId).classList.remove('hidden');
@@ -287,15 +278,15 @@
             }
             if(targetDeviceID) {
                 socket.emit('rtc-disconnect', { to: targetDeviceID });
+                targetDeviceID = null;
             }
             document.getElementById('full-video').classList.add('hidden');
             document.getElementById('full-video').srcObject = null;
             switchScreen('menu');
         }
 
-        // --- LOGIQUE SIGNALISATION & LIAISON ---
         function initViewer() {
-            document.getElementById('code-display').innerText = "GÉNÉRATION...";
+            document.getElementById('code-display').innerText = "......";
             socket.emit('request-code', "Récepteur");
         }
 
@@ -327,15 +318,14 @@
         });
 
         socket.on('connection-denied', () => { 
-            alert("Connexion refusée."); 
+            alert("Connexion refusée par le récepteur."); 
             document.getElementById('code-input').value = "";
         });
 
-        // --- CAPTURE VIDÉO & ÉCRAN NATIVE ---
         socket.on('connection-approved', async ({ targetId }) => {
             targetDeviceID = targetId;
             const isPC = !document.getElementById('viewer-screen').classList.contains('hidden');
-            
+
             peerConnection = new RTCPeerConnection(rtcConfig);
 
             peerConnection.onicecandidate = (event) => {
@@ -358,18 +348,26 @@
                     videoElem.play().catch(e => console.log(e));
                 };
             } else {
-                switchScreen('mobile-streaming-screen');
-                const success = await startMediaStream();
-                
-                if (!success) return;
-
-                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-                
-                const offer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(offer);
-                socket.emit('rtc-signal', { to: targetDeviceID, sdp: peerConnection.localDescription });
+                // Afficher l'écran intermédiaire pour valider l'action par un tap utilisateur
+                switchScreen('start-share-screen');
             }
         });
+
+        async function confirmAndStartStream() {
+            switchScreen('mobile-streaming-screen');
+            const success = await startMediaStream();
+            
+            if (!success) {
+                goBack();
+                return;
+            }
+
+            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+            
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            socket.emit('rtc-signal', { to: targetDeviceID, sdp: peerConnection.localDescription });
+        }
 
         socket.on('rtc-signal', async ({ sdp, candidate }) => {
             if (!peerConnection) return;
@@ -399,18 +397,14 @@
                     zoomTrack = localStream.getVideoTracks()[0];
                     setupPinchToZoom(document.getElementById('local-preview'));
                 } else {
-                    // DECLENCHEMENT DU PARTAGE D'ÉCRAN NATIF
                     if (!navigator.mediaDevices.getDisplayMedia) {
-                        alert("Le partage d'écran n'est pas supporté sur ce navigateur mobile. Essayez sur Chrome ou Edge.");
-                        goBack();
+                        alert("Le partage d'écran n'est pas supporté par ce navigateur mobile (essayez Chrome sur Android ou Safari sur iOS récent).");
                         return false;
                     }
                     localStream = await navigator.mediaDevices.getDisplayMedia({
-                        video: { cursor: "always" },
+                        video: true,
                         audio: false
                     });
-
-                    // Détection si l'utilisateur arrête le partage manuellement
                     localStream.getVideoTracks()[0].onended = () => goBack();
                 }
 
@@ -419,8 +413,7 @@
                 return true;
 
             } catch (err) {
-                alert("Erreur de sélection : " + err.message);
-                goBack();
+                alert("Impossible de démarrer la capture : " + err.message);
                 return false;
             }
         }
