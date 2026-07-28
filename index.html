@@ -100,6 +100,53 @@
         }
         .hidden { display: none !important; }
         
+        /* CONTENEUR DU FLUX VIDÉO RECEVEUR */
+        #video-container {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            background: black;
+            z-index: 90;
+        }
+        #full-video {
+            width: 100%; height: 100%;
+            object-fit: contain;
+        }
+
+        /* BARRE D'ACTIONS RECEPTION (SUR LE RECEVEUR) */
+        .receiver-ui {
+            position: absolute;
+            bottom: 30px; left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 500px;
+            text-align: center;
+            pointer-events: none;
+            z-index: 100;
+        }
+        .btn-row {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+        .receiver-ui button, .mobile-ui button { 
+            pointer-events: auto; 
+            margin: 0; 
+        }
+        .btn-compact {
+            width: auto;
+            flex: 1;
+            padding: 12px 10px;
+            font-size: 13px;
+            background: rgba(0,0,0,0.85);
+            border: 1px solid #00f2ff;
+            color: white;
+            border-radius: 8px;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+
+        /* ÉCRAN LOCAL EMETTEUR */
         #mobile-streaming-screen {
             position: fixed;
             top: 0; left: 0;
@@ -108,11 +155,9 @@
             z-index: 50;
         }
         #local-preview {
-            width: 100%;
-            height: 100%;
+            width: 100%; height: 100%;
             object-fit: contain;
         }
-        
         .mobile-ui {
             position: absolute;
             bottom: 30px; left: 50%;
@@ -120,32 +165,6 @@
             width: 90%;
             text-align: center;
             pointer-events: none;
-        }
-        .btn-row {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            margin-top: 10px;
-        }
-        .mobile-ui button { pointer-events: auto; margin: 0; }
-        .btn-compact {
-            width: auto;
-            flex: 1;
-            padding: 12px 10px;
-            font-size: 13px;
-            background: rgba(0,0,0,0.8);
-            border: 1px solid #00f2ff;
-            border-radius: 8px;
-            white-space: nowrap;
-        }
-
-        #full-video {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100vw; height: 100vh;
-            object-fit: contain;
-            background: black;
-            z-index: 99;
         }
     </style>
 </head>
@@ -186,7 +205,7 @@
     <div id="start-share-screen" class="container hidden">
         <div id="share-badge" class="mode-badge"></div>
         <h1>Liaison Autorisée</h1>
-        <p style="color: #aaa; margin-bottom: 20px;">Cliquez sur le bouton ci-dessous pour valider la capture :</p>
+        <p style="color: #aaa; margin-bottom: 20px;">Cliquez pour démarrer la capture :</p>
         <button id="start-stream-btn" onclick="confirmAndStartStream()">▶️ Lancer la diffusion</button>
     </div>
 
@@ -195,9 +214,19 @@
         <div class="mobile-ui">
             <p id="zoom-text" style="color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.8); font-size: 13px;">Pincez l'écran pour zoomer</p>
             <div class="btn-row">
-                <button id="cam-toggle-btn" class="btn-compact" onclick="toggleCamera()">🔄 Renverser</button>
-                <button class="btn-compact" onclick="toggleFullScreenMobile()">🔲 Plein écran</button>
-                <button class="btn-compact" onclick="goBack()" style="background: rgba(220,53,69,0.8); border-color: #dc3545;">Quitter</button>
+                <button id="cam-toggle-btn" class="btn-compact" onclick="toggleCamera()">🔄 Renverser la caméra</button>
+                <button class="btn-compact" onclick="goBack()" style="background: rgba(220,53,69,0.8); border-color: #dc3545;">Arrêter la diffusion</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="video-container" class="hidden">
+        <video id="full-video" autoplay playsinline></video>
+        <div class="receiver-ui">
+            <div class="btn-row">
+                <button class="btn-compact" onclick="toggleFullScreen()">🔲 Plein écran</button>
+                <button id="change-capture-btn" class="btn-compact" onclick="requestNewCapture()" style="border-color: #e040fb;">🔄 Changer de capture</button>
+                <button class="btn-compact" onclick="goBack()" style="background: rgba(220,53,69,0.8); border-color: #dc3545;">🚪 Quitter</button>
             </div>
         </div>
     </div>
@@ -208,8 +237,6 @@
         <button onclick="respondPermission(true)" style="background: #28a745;">Autoriser l'accès</button>
         <button onclick="respondPermission(false)" style="background: #dc3545;">Refuser</button>
     </div>
-
-    <video id="full-video" class="hidden" autoplay playsinline></video>
 
     <script>
         const socket = io('https://i-see-cam-ra.onrender.com'); 
@@ -235,11 +262,13 @@
                 updateBadges("📷 Mode Caméra", "badge-cam");
                 document.getElementById('cam-toggle-btn').classList.remove('hidden');
                 document.getElementById('zoom-text').classList.remove('hidden');
+                document.getElementById('change-capture-btn').classList.add('hidden');
             } else {
                 body.className = 'theme-screen';
                 updateBadges("🖥️ Partage d'Écran", "badge-screen");
                 document.getElementById('cam-toggle-btn').classList.add('hidden');
                 document.getElementById('zoom-text').classList.add('hidden');
+                document.getElementById('change-capture-btn').classList.remove('hidden');
             }
 
             switchScreen('menu');
@@ -261,7 +290,7 @@
         }
 
         function switchScreen(screenId) {
-            ['pre-menu', 'menu', 'viewer-screen', 'streamer-screen', 'start-share-screen', 'mobile-streaming-screen'].forEach(id => {
+            ['pre-menu', 'menu', 'viewer-screen', 'streamer-screen', 'start-share-screen', 'mobile-streaming-screen', 'video-container'].forEach(id => {
                 document.getElementById(id).classList.add('hidden');
             });
             document.getElementById(screenId).classList.remove('hidden');
@@ -280,7 +309,6 @@
                 socket.emit('rtc-disconnect', { to: targetDeviceID });
                 targetDeviceID = null;
             }
-            document.getElementById('full-video').classList.add('hidden');
             document.getElementById('full-video').srcObject = null;
             switchScreen('menu');
         }
@@ -324,7 +352,7 @@
 
         socket.on('connection-approved', async ({ targetId }) => {
             targetDeviceID = targetId;
-            const isPC = !document.getElementById('viewer-screen').classList.contains('hidden');
+            const isViewer = !document.getElementById('viewer-screen').classList.contains('hidden');
 
             peerConnection = new RTCPeerConnection(rtcConfig);
 
@@ -340,15 +368,14 @@
                 }
             };
 
-            if (isPC) {
-                switchScreen('full-video');
+            if (isViewer) {
+                switchScreen('video-container');
                 peerConnection.ontrack = (event) => {
                     const videoElem = document.getElementById('full-video');
                     videoElem.srcObject = event.streams[0];
                     videoElem.play().catch(e => console.log(e));
                 };
             } else {
-                // Afficher l'écran intermédiaire pour valider l'action par un tap utilisateur
                 switchScreen('start-share-screen');
             }
         });
@@ -368,6 +395,25 @@
             await peerConnection.setLocalDescription(offer);
             socket.emit('rtc-signal', { to: targetDeviceID, sdp: peerConnection.localDescription });
         }
+
+        // NOUVELLE FONCTION : CHANGER DE CAPTURE CÔTÉ ÉMETTEUR DEPUIS LE BOUTON DU RECEVEUR
+        function requestNewCapture() {
+            if (peerConnection && selectedType === 'screen') {
+                socket.emit('request-reselect', { to: targetDeviceID });
+            }
+        }
+
+        socket.on('request-reselect', async () => {
+            if (selectedType === 'screen') {
+                await startMediaStream();
+                if (peerConnection && localStream) {
+                    const senders = peerConnection.getSenders();
+                    const videoTrack = localStream.getVideoTracks()[0];
+                    const sender = senders.find(s => s.track && s.track.kind === 'video');
+                    if (sender) sender.replaceTrack(videoTrack);
+                }
+            }
+        });
 
         socket.on('rtc-signal', async ({ sdp, candidate }) => {
             if (!peerConnection) return;
@@ -398,7 +444,7 @@
                     setupPinchToZoom(document.getElementById('local-preview'));
                 } else {
                     if (!navigator.mediaDevices.getDisplayMedia) {
-                        alert("Le partage d'écran n'est pas supporté par ce navigateur mobile (essayez Chrome sur Android ou Safari sur iOS récent).");
+                        alert("Le partage d'écran n'est pas autorisé ou supporté par ce navigateur mobile (Apple restreint cette fonction sur iOS).");
                         return false;
                     }
                     localStream = await navigator.mediaDevices.getDisplayMedia({
@@ -430,7 +476,7 @@
             }
         }
 
-        function toggleFullScreenMobile() {
+        function toggleFullScreen() {
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen().catch(err => console.log(err));
             } else {
