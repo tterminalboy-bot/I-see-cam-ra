@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>CamLink Pro</title>
+    <title>CamLink</title>
     
     <link rel="icon" type="image/png" href="logo.png">
     <link rel="apple-touch-icon" href="logo.png">
@@ -44,7 +44,7 @@
         .theme-camera .container { border-color: rgba(0, 242, 255, 0.3); }
         .theme-screen .container { border-color: rgba(224, 64, 251, 0.3); }
 
-        /* Style du Logo */
+        /* Style du Logo principal */
         .app-logo {
             width: 90px;
             height: 90px;
@@ -54,22 +54,7 @@
             box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
         }
 
-        .header-title-container {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-
-        .mini-logo {
-            width: 32px;
-            height: 32px;
-            border-radius: 8px;
-            object-fit: cover;
-        }
-
-        h1 { font-size: 26px; margin: 0; }
+        h1 { font-size: 26px; margin: 0 0 15px 0; }
         
         .mode-badge {
             display: inline-block;
@@ -208,8 +193,8 @@
 <body id="app-body">
 
     <div id="pre-menu" class="container">
-        <img src="logo.png" alt="CamLink Pro Logo" class="app-logo">
-        <h1 style="color: #00f2ff; margin-bottom: 10px;">CamLink Pro</h1>
+        <img src="logo.png" alt="CamLink Logo" class="app-logo">
+        <h1 style="color: #00f2ff; margin-bottom: 10px;">CamLink</h1>
         <p style="color: #aaa; margin-bottom: 20px;">Choisissez le type de contenu à diffuser :</p>
         <button onclick="selectStreamType('camera')" style="background: linear-gradient(135deg, #00f2ff, #0072ff);">📷 Mode Caméra</button>
         <button onclick="selectStreamType('screen')" style="background: linear-gradient(135deg, #e040fb, #8e24aa);">🖥️ Partage d'Écran</button>
@@ -218,10 +203,7 @@
     <div id="menu" class="container hidden">
         <button class="back-btn" onclick="goToPreMenu()">←</button>
         <div id="current-badge" class="mode-badge"></div>
-        <div class="header-title-container">
-            <img src="logo.png" alt="Logo" class="mini-logo">
-            <h1 id="menu-title">Configuration</h1>
-        </div>
+        <h1 id="menu-title">Configuration</h1>
         <p style="color: #aaa;">Sélectionnez le rôle de cet appareil :</p>
         <button onclick="switchScreen('viewer-screen'); initViewer();">🖥️ Récepteur (Afficher ici)</button>
         <button onclick="switchScreen('streamer-screen');">📱 Émetteur (Envoyer le flux)</button>
@@ -230,10 +212,7 @@
     <div id="viewer-screen" class="container hidden">
         <button class="back-btn" onclick="goBack()">←</button>
         <div id="viewer-badge" class="mode-badge"></div>
-        <div class="header-title-container">
-            <img src="logo.png" alt="Logo" class="mini-logo">
-            <h1>Code de Liaison</h1>
-        </div>
+        <h1>Code de Liaison</h1>
         <div id="code-display" style="font-size: 36px; font-weight: bold; color: #00f2ff; margin: 20px 0; letter-spacing: 4px;">......</div>
         <p style="color: #aaa;">Entrez ce code à 6 chiffres sur l'émetteur.</p>
     </div>
@@ -241,20 +220,14 @@
     <div id="streamer-screen" class="container hidden">
         <button class="back-btn" onclick="goBack()">←</button>
         <div id="streamer-badge" class="mode-badge"></div>
-        <div class="header-title-container">
-            <img src="logo.png" alt="Logo" class="mini-logo">
-            <h1>Connexion</h1>
-        </div>
+        <h1>Connexion</h1>
         <input type="text" id="code-input" placeholder="000000" maxlength="6" inputmode="numeric" pattern="[0-9]*" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
         <button onclick="sendCode()">Demander la liaison</button>
     </div>
 
     <div id="start-share-screen" class="container hidden">
         <div id="share-badge" class="mode-badge"></div>
-        <div class="header-title-container">
-            <img src="logo.png" alt="Logo" class="mini-logo">
-            <h1>Autorisée</h1>
-        </div>
+        <h1>Autorisée</h1>
         <p style="color: #aaa; margin-bottom: 20px;">Cliquez pour démarrer la capture :</p>
         <button id="start-stream-btn" onclick="confirmAndStartStream()">▶️ Lancer la diffusion</button>
     </div>
@@ -283,7 +256,6 @@
     </div>
 
     <div id="popup" class="container hidden" style="position: absolute; z-index: 100; background: #111126;">
-        <img src="logo.png" alt="Logo" class="mini-logo" style="margin-bottom: 10px;">
         <h1>⚠️ Autorisation</h1>
         <p id="popup-text">Un appareil souhaite se connecter.</p>
         <button onclick="respondPermission(true)" style="background: #28a745;">Autoriser l'accès</button>
