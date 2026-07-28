@@ -101,7 +101,6 @@
         }
         .hidden { display: none !important; }
         
-        /* CONTENEUR ET LECTEUR VIDÉO */
         #video-container {
             position: fixed;
             top: 0; left: 0;
@@ -115,7 +114,6 @@
             object-fit: contain;
         }
 
-        /* BARRE DE CONTRÔLE AMOVIBLE (STYLE YOUTUBE / NETFLIX) */
         .receiver-ui {
             position: absolute;
             bottom: 30px; left: 50%;
@@ -157,7 +155,6 @@
             backdrop-filter: blur(5px);
         }
 
-        /* PREVIEW ÉMETTEUR */
         #mobile-streaming-screen {
             position: fixed;
             top: 0; left: 0;
@@ -413,7 +410,6 @@
             socket.emit('rtc-signal', { to: targetDeviceID, sdp: peerConnection.localDescription });
         }
 
-        // --- GESTION MASQUAGE AUTOMATIQUE DE LA BARRE (STYLE YOUTUBE) ---
         function handleVideoTap() {
             const controls = document.getElementById('receiver-controls');
             if (controls.classList.contains('ui-hidden')) {
@@ -431,10 +427,9 @@
             controls.classList.remove('ui-hidden');
             uiTimeout = setTimeout(() => {
                 controls.classList.add('ui-hidden');
-            }, 3000); // Se masque après 3 secondes d'inactivité
+            }, 3000);
         }
 
-        // --- RE-SÉLECTION DE CAPTURE ---
         function requestNewCapture() {
             if (peerConnection && selectedType === 'screen') {
                 socket.emit('request-reselect', { to: targetDeviceID });
@@ -479,26 +474,30 @@
             try {
                 if (selectedType === 'camera') {
                     localStream = await navigator.mediaDevices.getUserMedia({
-                        video: { facingMode: currentFacingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
+                        video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
                         audio: false
                     });
                     zoomTrack = localStream.getVideoTracks()[0];
                     setupPinchToZoom(document.getElementById('local-preview'));
                 } else {
-                    // Vérification de compatibilité iOS vs Android/Samsung/PC
-                    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-                    if (isIOS) {
-                        alert("Apple bloque le partage d'écran WebRTC sur iOS/Safari pour des raisons de sécurité. Cette option fonctionne sur Android (Samsung), PC et Mac.");
+                    const isAndroid = /Android/i.test(navigator.userAgent);
+                    
+                    if (isAndroid && !navigator.mediaDevices.getDisplayMedia) {
+                        alert("Sur Android, utilise le navigateur 'Samsung Internet' ou active 'Version pour ordinateur' dans Chrome pour autoriser le partage d'écran.");
                         return false;
                     }
 
                     if (!navigator.mediaDevices.getDisplayMedia) {
-                        alert("Le partage d'écran n'est pas supporté par ce navigateur.");
+                        alert("Le partage d'écran WebRTC n'est pas activé sur ce navigateur mobile.");
                         return false;
                     }
 
                     localStream = await navigator.mediaDevices.getDisplayMedia({
-                        video: true,
+                        video: {
+                            displaySurface: "monitor",
+                            logicalSurface: true,
+                            cursor: "always"
+                        },
                         audio: false
                     });
                     localStream.getVideoTracks()[0].onended = () => goBack();
@@ -509,7 +508,7 @@
                 return true;
 
             } catch (err) {
-                alert("Erreur de sélection : " + err.message);
+                alert("Erreur de capture : " + err.message);
                 return false;
             }
         }
