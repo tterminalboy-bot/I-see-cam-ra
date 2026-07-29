@@ -122,10 +122,13 @@
             background: black;
             z-index: 90;
             cursor: pointer;
+            overflow: hidden;
         }
         #full-video {
             width: 100%; height: 100%;
             object-fit: contain;
+            transition: transform 0.1s linear;
+            transform-origin: center center;
         }
 
         .receiver-ui {
@@ -144,6 +147,31 @@
             opacity: 0;
             transform: translate(-50%, 20px);
             pointer-events: none;
+        }
+
+        .zoom-control-box {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.75);
+            padding: 8px 16px;
+            border-radius: 20px;
+            margin-bottom: 12px;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(0, 242, 255, 0.3);
+        }
+
+        .zoom-control-box span {
+            font-size: 14px;
+            font-weight: bold;
+            color: #00f2ff;
+        }
+
+        .zoom-slider {
+            flex: 1;
+            accent-color: #00f2ff;
+            cursor: pointer;
         }
 
         .btn-row {
@@ -247,6 +275,11 @@
     <div id="video-container" class="hidden" onclick="handleVideoTap()">
         <video id="full-video" autoplay playsinline></video>
         <div id="receiver-controls" class="receiver-ui">
+            <div id="viewer-zoom-box" class="zoom-control-box hidden" onclick="event.stopPropagation();">
+                <span>🔍 -</span>
+                <input type="range" id="zoom-range" class="zoom-slider" min="1" max="4" step="0.1" value="1" oninput="applyDisplayZoom(this.value)">
+                <span>+</span>
+            </div>
             <div class="btn-row">
                 <button class="btn-compact" onclick="event.stopPropagation(); toggleFullScreen();">🔲 Plein écran</button>
                 <button id="viewer-change-capture-btn" class="btn-compact" onclick="event.stopPropagation(); requestNewCapture();" style="border-color: #e040fb;">🔄 Changer de capture</button>
@@ -272,6 +305,7 @@
         let zoomTrack = null;
         let startDist = 0; 
         let baseZoom = 1; 
+        let currentDisplayZoom = 1;
         let peerConnection = null;
         let targetDeviceID = null;
         let uiTimeout = null;
@@ -287,6 +321,7 @@
                 updateBadges("📷 Mode Caméra", "badge-cam");
                 document.getElementById('cam-toggle-btn').classList.remove('hidden');
                 document.getElementById('zoom-text').classList.remove('hidden');
+                document.getElementById('viewer-zoom-box').classList.remove('hidden');
                 document.getElementById('viewer-change-capture-btn').classList.add('hidden');
                 document.getElementById('streamer-change-capture-btn').classList.add('hidden');
             } else {
@@ -294,6 +329,7 @@
                 updateBadges("🖥️ Partage d'Écran", "badge-screen");
                 document.getElementById('cam-toggle-btn').classList.add('hidden');
                 document.getElementById('zoom-text').classList.add('hidden');
+                document.getElementById('viewer-zoom-box').classList.add('hidden');
                 document.getElementById('viewer-change-capture-btn').classList.remove('hidden');
                 document.getElementById('streamer-change-capture-btn').classList.remove('hidden');
             }
@@ -337,7 +373,9 @@
                 socket.emit('rtc-disconnect', { to: targetDeviceID });
                 targetDeviceID = null;
             }
+            applyDisplayZoom(1);
             document.getElementById('full-video').srcObject = null;
+            document.getElementById('local-preview').srcObject = null;
             switchScreen('menu');
         }
 
@@ -348,7 +386,6 @@
 
         socket.on('code-generated', (code) => {
             currentCode = code;
-            // On masque les 2 premiers caractères du code ("C-" ou "S-") pour l'utilisateur
             const displayDigits = code.substring(2); 
             document.getElementById('code-display').innerText = displayDigits;
         });
@@ -372,7 +409,6 @@
                 return;
             }
 
-            // Ajout invisible du préfixe en fonction de la catégorie active
             const prefix = (selectedType === 'camera') ? "C-" : "S-";
             const fullCodeToSend = prefix + input;
 
@@ -411,6 +447,7 @@
             if (isViewer) {
                 switchScreen('video-container');
                 resetUiTimer();
+                setupViewerPinchToZoom(document.getElementById('video-container'));
                 peerConnection.ontrack = (event) => {
                     const videoElem = document.getElementById('full-video');
                     videoElem.srcObject = event.streams[0];
@@ -454,7 +491,60 @@
             controls.classList.remove('ui-hidden');
             uiTimeout = setTimeout(() => {
                 controls.classList.add('ui-hidden');
-            }, 3000);
+            }, 4000);
+        }
+
+        function applyDisplayZoom(val) {
+            currentDisplayZoom = Math.max(1, Math.min(4, parseFloat(val)));
+            const videoElem = document.getElementById('full-video');
+            if (videoElem) {
+                videoElem.style.transform = `scale(${currentDisplayZoom})`;
+            }
+            const slider = document.getElementById('zoom-range');
+            if (slider && parseFloat(slider.value) !== currentDisplayZoom) {
+                slider.value = currentDisplayZoom;
+            }
+        }
+
+        window.addEventListener('keydown', (e) => {
+            const isViewerActive = !document.getElementById('video-container').classList.contains('hidden');
+            if (isViewerActive && selectedType === 'camera') {
+                if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    applyDisplayZoom(currentDisplayZoom + 0.2);
+                    resetUiTimer();
+                } else if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    applyDisplayZoom(currentDisplayZoom - 0.2);
+                    resetUiTimer();
+                }
+            }
+        });
+
+        function setupViewerPinchToZoom(element) {
+            let initialDist = 0;
+            let startZoom = 1;
+
+            element.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 2 && selectedType === 'camera') {
+                    initialDist = Math.hypot(
+                        e.touches[0].pageX - e.touches[1].pageX,
+                        e.touches[0].pageY - e.touches[1].pageY
+                    );
+                    startZoom = currentDisplayZoom;
+                }
+            });
+
+            element.addEventListener('touchmove', (e) => {
+                if (e.touches.length === 2 && selectedType === 'camera') {
+                    const currentDist = Math.hypot(
+                        e.touches[0].pageX - e.touches[1].pageX,
+                        e.touches[0].pageY - e.touches[1].pageY
+                    );
+                    const scaleChange = (currentDist - initialDist) * 0.008;
+                    applyDisplayZoom(startZoom + scaleChange);
+                }
+            });
         }
 
         function requestNewCapture() {
@@ -521,6 +611,7 @@
 
                 const videoElement = document.getElementById('local-preview');
                 videoElement.srcObject = localStream;
+                await videoElement.play().catch(e => console.log(e));
                 return true;
 
             } catch (err) {
