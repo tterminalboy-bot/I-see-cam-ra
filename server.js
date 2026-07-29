@@ -12,21 +12,19 @@ const activeCodes = {};
 
 io.on('connection', (socket) => {
 
-    // 1. Génération du code avec préfixe interne (Récepteur)
     socket.on('request-code', (data) => {
         const prefix = (data.type === 'camera') ? 'C-' : 'S-';
         const randomNumber = Math.floor(100000 + Math.random() * 900000).toString();
         const fullCode = prefix + randomNumber;
         
         activeCodes[fullCode] = {
-            socketId: socket.id, // ID du récepteur
+            socketId: socket.id,
             type: data.type
         };
 
         socket.emit('code-generated', fullCode);
     });
 
-    // 2. Vérification du code (Émetteur)
     socket.on('verify-code', ({ code, deviceName, type }) => {
         const codeNettoye = code.trim().toUpperCase();
         const target = activeCodes[codeNettoye];
@@ -41,22 +39,19 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Sauvegarde de l'ID de l'émetteur
         target.streamerSocketId = socket.id;
 
-        // Demande de permission au récepteur
         io.to(target.socketId).emit('ask-permission', { 
             streamerId: socket.id, 
             streamerName: deviceName 
         });
     });
 
-    // 3. Gestion des autorisations & signaux WebRTC
     socket.on('permission-response', ({ code, accepted }) => {
         const target = activeCodes[code];
         if (target && target.streamerSocketId) {
-            const viewerSocketId = target.socketId;          // Récepteur (PC)
-            const streamerSocketId = target.streamerSocketId; // Émetteur (Téléphone)
+            const viewerSocketId = target.socketId;          
+            const streamerSocketId = target.streamerSocketId; 
 
             if (accepted) {
                 io.to(streamerSocketId).emit('connection-approved', { targetId: viewerSocketId });
@@ -79,7 +74,6 @@ io.on('connection', (socket) => {
         io.to(to).emit('rtc-disconnect');
     });
 
-    // Nettoyage lors de la déconnexion
     socket.on('disconnect', () => {
         for (const code in activeCodes) {
             if (activeCodes[code].socketId === socket.id || activeCodes[code].streamerSocketId === socket.id) {
