@@ -338,4 +338,385 @@
             if (type === 'camera') {
                 body.className = 'theme-camera';
                 updateBadges("📷 Mode Caméra", "badge-cam");
-                document.getElementById('cam-toggle-btn').classList.
+                document.getElementById('cam-toggle-btn').classList.remove('hidden');
+                document.getElementById('zoom-text').classList.remove('hidden');
+                document.getElementById('viewer-zoom-box').classList.remove('hidden');
+                document.getElementById('viewer-change-capture-btn').classList.add('hidden');
+                document.getElementById('streamer-change-capture-btn').classList.add('hidden');
+            } else {
+                body.className = 'theme-screen';
+                updateBadges("🖥️ Partage d'Écran", "badge-screen");
+                document.getElementById('cam-toggle-btn').classList.add('hidden');
+                document.getElementById('zoom-text').classList.add('hidden');
+                document.getElementById('viewer-zoom-box').classList.add('hidden');
+                document.getElementById('viewer-change-capture-btn').classList.remove('hidden');
+                document.getElementById('streamer-change-capture-btn').classList.remove('hidden');
+            }
+
+            switchScreen('menu');
+        }
+
+        function updateBadges(text, badgeClass) {
+            ['current-badge', 'viewer-badge', 'streamer-badge', 'waiting-badge'].forEach(id => {
+                const badge = document.getElementById(id);
+                if (badge) {
+                    badge.innerText = text;
+                    badge.className = 'mode-badge ' + badgeClass;
+                }
+            });
+        }
+
+        function goToPreMenu() {
+            document.getElementById('app-body').className = '';
+            switchScreen('pre-menu');
+        }
+
+        function switchScreen(screenId) {
+            ['pre-menu', 'menu', 'viewer-screen', 'streamer-screen', 'waiting-screen', 'mobile-streaming-screen', 'video-container'].forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+            });
+            document.getElementById(screenId).classList.remove('hidden');
+        }
+
+        function setRole(role) {
+            currentRole = role;
+            if (role === 'viewer') {
+                switchScreen('viewer-screen');
+                document.getElementById('code-display').innerText = "......";
+                socket.emit('request-code', { role: "Récepteur", type: selectedType });
+            } else {
+                switchScreen('streamer-screen');
+                document.getElementById('code-input').value = '';
+            }
+        }
+
+        function goBack() {
+            if(uiTimeout) clearTimeout(uiTimeout);
+            if(localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            if(peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            if(targetDeviceID) {
+                socket.emit('rtc-disconnect', { to: targetDeviceID });
+                targetDeviceID = null;
+            }
+            applyDisplayZoom(1);
+            document.getElementById('full-video').srcObject = null;
+            document.getElementById('local-preview').srcObject = null;
+            currentRole = null;
+            switchScreen('menu');
+        }
+
+        socket.on('code-generated', (code) => {
+            currentCode = code;
+            const displayDigits = code.substring(2); 
+            document.getElementById('code-display').innerText = displayDigits;
+        });
+
+        socket.on('ask-permission', ({ streamerName }) => {
+            const label = selectedType === 'camera' ? 'sa caméra' : 'son écran';
+            document.getElementById('popup-text').innerText = `L'appareil distant souhaite partager ${label}. Autoriser ?`;
+            document.getElementById('popup').classList.remove('hidden');
+        });
+
+        function respondPermission(accepted) {
+            document.getElementById('popup').classList.add('hidden');
+            socket.emit('permission-response', { code: currentCode, accepted });
+        }
+
+        async function sendCode() {
+            const input = document.getElementById('code-input').value.trim();
+            
+            if (input.length !== 6) {
+                alert("Veuillez entrer un code complet à 6 chiffres.");
+                return;
+            }
+
+            const prefix = (selectedType === 'camera') ? "C-" : "S-";
+            const fullCodeToSend = prefix + input;
+            currentCode = fullCodeToSend;
+
+            // CRUCIAL : On lance la caméra IMMÉDIATEMENT au clic de l'utilisateur (contourne la sécurité mobile)
+            if (currentRole === 'streamer') {
+                const success = await startMediaStream();
+                if (!success) {
+                    // Si l'utilisateur refuse la caméra ou qu'il y a une erreur, on n'envoie pas la demande
+                    return;
+                }
+            }
+            
+            switchScreen('waiting-screen');
+            socket.emit('verify-code', { code: fullCodeToSend, deviceName: "Émetteur", type: selectedType });
+        }
+
+        function stopLocalStreamIfAny() {
+            if(localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+        }
+
+        socket.on('error-message', (msg) => {
+            alert("Erreur : " + msg);
+            stopLocalStreamIfAny();
+            switchScreen('streamer-screen');
+            document.getElementById('code-input').value = ""; 
+        });
+
+        socket.on('connection-denied', () => { 
+            alert("Connexion refusée par le récepteur."); 
+            stopLocalStreamIfAny();
+            switchScreen('streamer-screen');
+            document.getElementById('code-input').value = "";
+        });
+
+        socket.on('connection-approved', async ({ targetId }) => {
+            targetDeviceID = targetId;
+            peerConnection = new RTCPeerConnection(rtcConfig);
+
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('rtc-signal', { to: targetDeviceID, candidate: event.candidate });
+                }
+            };
+
+            peerConnection.onconnectionstatechange = () => {
+                if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
+                    goBack();
+                }
+            };
+
+            // LE RÉCEPTEUR (PC) affiche le flux reçu
+            if (currentRole === 'viewer') {
+                switchScreen('video-container');
+                resetUiTimer();
+                setupViewerPinchToZoom(document.getElementById('video-container'));
+                peerConnection.ontrack = (event) => {
+                    const videoElem = document.getElementById('full-video');
+                    videoElem.srcObject = event.streams[0];
+                    videoElem.play().catch(e => console.log(e));
+                };
+            } 
+            // L'ÉMETTEUR (Téléphone) envoie le flux déjà démarré
+            else if (currentRole === 'streamer') {
+                switchScreen('mobile-streaming-screen'); // Affiche le retour écran
+                
+                if (localStream) {
+                    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+                    const offer = await peerConnection.createOffer();
+                    await peerConnection.setLocalDescription(offer);
+                    socket.emit('rtc-signal', { to: targetDeviceID, sdp: peerConnection.localDescription });
+                }
+            }
+        });
+
+        function handleVideoTap() {
+            const controls = document.getElementById('receiver-controls');
+            if (controls.classList.contains('ui-hidden')) {
+                controls.classList.remove('ui-hidden');
+                resetUiTimer();
+            } else {
+                controls.classList.add('ui-hidden');
+                if (uiTimeout) clearTimeout(uiTimeout);
+            }
+        }
+
+        function resetUiTimer() {
+            if (uiTimeout) clearTimeout(uiTimeout);
+            const controls = document.getElementById('receiver-controls');
+            controls.classList.remove('ui-hidden');
+            uiTimeout = setTimeout(() => {
+                controls.classList.add('ui-hidden');
+            }, 4000);
+        }
+
+        function applyDisplayZoom(val) {
+            currentDisplayZoom = Math.max(1, Math.min(4, parseFloat(val)));
+            const videoElem = document.getElementById('full-video');
+            if (videoElem) {
+                videoElem.style.transform = `scale(${currentDisplayZoom})`;
+            }
+            const slider = document.getElementById('zoom-range');
+            if (slider && parseFloat(slider.value) !== currentDisplayZoom) {
+                slider.value = currentDisplayZoom;
+            }
+        }
+
+        window.addEventListener('keydown', (e) => {
+            const isViewerActive = !document.getElementById('video-container').classList.contains('hidden');
+            if (isViewerActive && selectedType === 'camera') {
+                if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    applyDisplayZoom(currentDisplayZoom + 0.2);
+                    resetUiTimer();
+                } else if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    applyDisplayZoom(currentDisplayZoom - 0.2);
+                    resetUiTimer();
+                }
+            }
+        });
+
+        function setupViewerPinchToZoom(element) {
+            let initialDist = 0;
+            let startZoom = 1;
+
+            element.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 2 && selectedType === 'camera') {
+                    initialDist = Math.hypot(
+                        e.touches[0].pageX - e.touches[1].pageX,
+                        e.touches[0].pageY - e.touches[1].pageY
+                    );
+                    startZoom = currentDisplayZoom;
+                }
+            });
+
+            element.addEventListener('touchmove', (e) => {
+                if (e.touches.length === 2 && selectedType === 'camera') {
+                    const currentDist = Math.hypot(
+                        e.touches[0].pageX - e.touches[1].pageX,
+                        e.touches[0].pageY - e.touches[1].pageY
+                    );
+                    const scaleChange = (currentDist - initialDist) * 0.008;
+                    applyDisplayZoom(startZoom + scaleChange);
+                }
+            });
+        }
+
+        function requestNewCapture() {
+            if (peerConnection && selectedType === 'screen') {
+                socket.emit('request-reselect', { to: targetDeviceID });
+            }
+        }
+
+        socket.on('request-reselect', async () => {
+            if (selectedType === 'screen') {
+                await reselectMediaStream();
+            }
+        });
+
+        async function reselectMediaStream() {
+            const success = await startMediaStream();
+            if (success && peerConnection && localStream) {
+                const senders = peerConnection.getSenders();
+                const videoTrack = localStream.getVideoTracks()[0];
+                const sender = senders.find(s => s.track && s.track.kind === 'video');
+                if (sender) sender.replaceTrack(videoTrack);
+            }
+        }
+
+        socket.on('rtc-signal', async ({ sdp, candidate }) => {
+            if (!peerConnection) return;
+            if (sdp) {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
+                if (peerConnection.remoteDescription.type === 'offer') {
+                    const answer = await peerConnection.createAnswer();
+                    await peerConnection.setLocalDescription(answer);
+                    socket.emit('rtc-signal', { to: targetDeviceID, sdp: peerConnection.localDescription }); 
+                }
+            } else if (candidate) {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.log(e));
+            }
+        });
+
+        socket.on('rtc-disconnect', () => goBack());
+
+        async function startMediaStream() {
+            stopLocalStreamIfAny(); // Nettoyage propre avant de relancer
+
+            try {
+                if (selectedType === 'camera') {
+                    localStream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+                        audio: false
+                    });
+                    zoomTrack = localStream.getVideoTracks()[0];
+                    setupPinchToZoom(document.getElementById('local-preview'));
+                } else {
+                    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+                        alert("Le navigateur ne prend pas en charge la capture d'écran directe.");
+                        return false;
+                    }
+
+                    localStream = await navigator.mediaDevices.getDisplayMedia({
+                        video: true,
+                        audio: false
+                    });
+                    localStream.getVideoTracks()[0].onended = () => goBack();
+                }
+
+                // Affectation au retour vidéo local (Sur l'émetteur)
+                const videoElement = document.getElementById('local-preview');
+                videoElement.srcObject = localStream;
+                await videoElement.play().catch(e => console.log(e));
+                
+                return true;
+
+            } catch (err) {
+                alert("Impossible d'accéder à la caméra/l'écran : " + err.message);
+                return false;
+            }
+        }
+
+        async function toggleCamera() {
+            if (selectedType !== 'camera') return;
+            currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
+            await startMediaStream(); // Relance avec la nouvelle caméra
+            if (peerConnection && localStream) {
+                const senders = peerConnection.getSenders();
+                const videoTrack = localStream.getVideoTracks()[0];
+                const sender = senders.find(s => s.track && s.track.kind === 'video');
+                if (sender) sender.replaceTrack(videoTrack);
+            }
+        }
+
+        function toggleFullScreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.log(err));
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        function setupPinchToZoom(element) {
+            element.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 2 && zoomTrack && selectedType === 'camera') {
+                    startDist = Math.hypot(
+                        e.touches[0].pageX - e.touches[1].pageX,
+                        e.touches[0].pageY - e.touches[1].pageY
+                    );
+                    const settings = zoomTrack.getSettings();
+                    baseZoom = settings.zoom || 1; 
+                }
+            });
+
+            element.addEventListener('touchmove', async (e) => {
+                if (e.touches.length === 2 && zoomTrack && selectedType === 'camera') {
+                    const capabilities = zoomTrack.getCapabilities();
+                    if (!capabilities.zoom) return; 
+
+                    const currentDist = Math.hypot(
+                        e.touches[0].pageX - e.touches[1].pageX,
+                        e.touches[0].pageY - e.touches[1].pageY
+                    );
+
+                    const delta = (currentDist - startDist) * 0.01; 
+                    let newZoom = baseZoom + delta;
+
+                    newZoom = Math.max(capabilities.zoom.min, Math.min(capabilities.zoom.max, newZoom));
+
+                    try {
+                        await zoomTrack.applyConstraints({ advanced: [{ zoom: newZoom }] });
+                    } catch (err) {
+                        console.log("Erreur zoom", err);
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>µ
