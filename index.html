@@ -115,7 +115,6 @@
         }
         .hidden { display: none !important; }
         
-        /* Écran d'attente parfaitement centré avec espace pour le sablier */
         #waiting-approval-screen {
             display: flex;
             flex-direction: column;
@@ -200,6 +199,24 @@
             width: 100%; height: 100%;
             object-fit: contain;
         }
+        
+        /* Quadrillage d'aide à la visée (Émetteur Caméra uniquement) */
+        #camera-grid {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 55;
+        }
+        .grid-line {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.25);
+        }
+        .grid-h1 { top: 33.33%; left: 0; width: 100%; height: 1px; }
+        .grid-h2 { top: 66.66%; left: 0; width: 100%; height: 1px; }
+        .grid-v1 { left: 33.33%; top: 0; width: 1px; height: 100%; }
+        .grid-v2 { left: 66.66%; top: 0; width: 1px; height: 100%; }
+
         .mobile-ui {
             position: absolute;
             bottom: 30px; left: 50%;
@@ -207,6 +224,7 @@
             width: 90%;
             text-align: center;
             pointer-events: none;
+            z-index: 60;
         }
     </style>
 </head>
@@ -254,6 +272,12 @@
 
     <div id="mobile-streaming-screen" class="hidden">
         <video id="local-preview" autoplay playsinline muted></video>
+        <div id="camera-grid" class="hidden">
+            <div class="grid-line grid-h1"></div>
+            <div class="grid-line grid-h2"></div>
+            <div class="grid-line grid-v1"></div>
+            <div class="grid-line grid-v2"></div>
+        </div>
         <div class="mobile-ui">
             <p id="zoom-text" style="color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.8); font-size: 13px;">Pincez l'écran pour zoomer</p>
             <div class="btn-row">
@@ -441,8 +465,15 @@
                     videoElem.play().catch(e => console.log(e));
                 };
             } else {
-                // Lancement direct de la diffusion sans étape intermédiaire
                 switchScreen('mobile-streaming-screen');
+                
+                // Gestion de l'affichage du quadrillage (uniquement en mode caméra sur l'émetteur)
+                if (selectedType === 'camera') {
+                    document.getElementById('camera-grid').classList.remove('hidden');
+                } else {
+                    document.getElementById('camera-grid').classList.add('hidden');
+                }
+
                 const success = await startMediaStream();
                 
                 if (!success) {
