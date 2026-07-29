@@ -12,11 +12,11 @@ const activeCodes = {};
 
 io.on('connection', (socket) => {
 
-    // 1. Génération du code
+    // 1. Génération du code avec préfixe interne
     socket.on('request-code', (data) => {
         const prefix = (data.type === 'camera') ? 'C-' : 'S-';
         const randomNumber = Math.floor(100000 + Math.random() * 900000).toString();
-        const fullCode = prefix + randomNumber;
+        const fullCode = prefix + randomNumber; // Ex: "C-123456" ou "S-123456"
         
         activeCodes[fullCode] = {
             socketId: socket.id,
@@ -26,13 +26,13 @@ io.on('connection', (socket) => {
         socket.emit('code-generated', fullCode);
     });
 
-    // 2. Vérification du code saisi
+    // 2. Vérification stricte du code
     socket.on('verify-code', ({ code, deviceName, type }) => {
         const codeNettoye = code.trim().toUpperCase();
         const target = activeCodes[codeNettoye];
 
         if (!target) {
-            socket.emit('error-message', 'Code invalide, expiré, ou déjà utilisé.');
+            socket.emit('error-message', 'Code invalide ou expiré.');
             return;
         }
 
@@ -41,31 +41,25 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Demande l'autorisation au récepteur
         io.to(target.socketId).emit('ask-permission', { 
             streamerId: socket.id, 
             streamerName: deviceName 
         });
     });
 
-    // 3. Réponse à l'autorisation et INVALIDATION DU CODE
+    // 3. Gestion des autorisations & signaux WebRTC
     socket.on('permission-response', ({ code, accepted }) => {
         const target = activeCodes[code];
         if (target) {
             if (accepted) {
-                // On connecte les deux appareils
                 io.to(target.socketId).emit('connection-approved', { targetId: socket.id });
                 socket.emit('connection-approved', { targetId: target.socketId });
-                
-                // 🔒 INVALIDATION : On supprime le code pour qu'il ne soit plus jamais utilisable
-                delete activeCodes[code];
             } else {
                 io.to(target.socketId).emit('connection-denied');
             }
         }
     });
 
-    // 4. Signaux WebRTC
     socket.on('rtc-signal', ({ to, sdp, candidate }) => {
         io.to(to).emit('rtc-signal', { sdp, candidate });
     });
@@ -78,7 +72,7 @@ io.on('connection', (socket) => {
         io.to(to).emit('rtc-disconnect');
     });
 
-    // Nettoyage à la déconnexion
+    // Nettoyage lors de la déconnexion
     socket.on('disconnect', () => {
         for (const code in activeCodes) {
             if (activeCodes[code].socketId === socket.id) {
