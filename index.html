@@ -348,7 +348,6 @@
 
         socket.on('code-generated', (code) => {
             currentCode = code;
-            // On masque les 2 premiers caractères du code ("C-" ou "S-") pour l'utilisateur
             const displayDigits = code.substring(2); 
             document.getElementById('code-display').innerText = displayDigits;
         });
@@ -372,7 +371,6 @@
                 return;
             }
 
-            // Ajout invisible du préfixe en fonction de la catégorie active
             const prefix = (selectedType === 'camera') ? "C-" : "S-";
             const fullCodeToSend = prefix + input;
 
