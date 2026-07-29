@@ -84,7 +84,7 @@
         .theme-screen button { background: linear-gradient(135deg, #e040fb, #4a00e0); }
         button:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,242,255,0.4); }
 
-        input[type="text"] {
+        input {
             padding: 14px;
             border-radius: 10px;
             border: 1px solid #222;
@@ -115,19 +115,6 @@
         }
         .hidden { display: none !important; }
         
-        .clock-spinner {
-            font-size: 50px;
-            margin: 20px 0;
-            display: inline-block;
-            animation: pulseClock 1.5s infinite ease-in-out;
-        }
-
-        @keyframes pulseClock {
-            0% { transform: scale(1); opacity: 0.8; }
-            50% { transform: scale(1.2); opacity: 1; }
-            100% { transform: scale(1); opacity: 0.8; }
-        }
-
         #video-container {
             position: fixed;
             top: 0; left: 0;
@@ -135,14 +122,10 @@
             background: black;
             z-index: 90;
             cursor: pointer;
-            overflow: hidden;
         }
-        
         #full-video {
             width: 100%; height: 100%;
             object-fit: contain;
-            transition: transform 0.1s linear;
-            transform-origin: center center;
         }
 
         .receiver-ui {
@@ -163,42 +146,15 @@
             pointer-events: none;
         }
 
-        .zoom-control-box {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            background: rgba(0, 0, 0, 0.75);
-            padding: 8px 16px;
-            border-radius: 20px;
-            margin-bottom: 12px;
-            backdrop-filter: blur(5px);
-            border: 1px solid rgba(0, 242, 255, 0.3);
-        }
-
-        .zoom-control-box span {
-            font-size: 14px;
-            font-weight: bold;
-            color: #00f2ff;
-        }
-
-        .zoom-slider {
-            flex: 1;
-            accent-color: #00f2ff;
-            cursor: pointer;
-        }
-
         .btn-row {
             display: flex;
             justify-content: center;
             gap: 10px;
         }
-        
         .receiver-ui button, .mobile-ui button { 
             pointer-events: auto; 
             margin: 0; 
         }
-        
         .btn-compact {
             width: auto;
             flex: 1;
@@ -249,8 +205,8 @@
         <div id="current-badge" class="mode-badge"></div>
         <h1 id="menu-title">Configuration</h1>
         <p style="color: #aaa;">Sélectionnez le rôle de cet appareil :</p>
-        <button onclick="setRole('viewer')">🖥️ Récepteur (Afficher ici)</button>
-        <button onclick="setRole('streamer')">📱 Émetteur (Envoyer le flux)</button>
+        <button onclick="switchScreen('viewer-screen'); initViewer();">🖥️ Récepteur (Afficher ici)</button>
+        <button onclick="switchScreen('streamer-screen'); document.getElementById('code-input').value = '';">📱 Émetteur (Envoyer le flux)</button>
     </div>
 
     <div id="viewer-screen" class="container hidden">
@@ -258,7 +214,7 @@
         <div id="viewer-badge" class="mode-badge"></div>
         <h1>Code de Liaison</h1>
         <div id="code-display" style="font-size: 36px; font-weight: bold; color: #00f2ff; margin: 20px 0; letter-spacing: 4px;">......</div>
-        <p style="color: #aaa;">Entrez ce code sur l'appareil émetteur.</p>
+        <p style="color: #aaa;">Entrez ce code à 6 chiffres sur l'émetteur.</p>
     </div>
 
     <div id="streamer-screen" class="container hidden">
@@ -266,15 +222,14 @@
         <div id="streamer-badge" class="mode-badge"></div>
         <h1>Connexion</h1>
         <input type="text" id="code-input" placeholder="000000" maxlength="6" inputmode="numeric" pattern="[0-9]*" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
-        <button onclick="sendCode()">Se connecter</button>
+        <button onclick="sendCode()">Demander la liaison</button>
     </div>
 
-    <div id="waiting-screen" class="container hidden">
-        <button class="back-btn" onclick="goBack()">←</button>
-        <div id="waiting-badge" class="mode-badge"></div>
-        <h1>Demande envoyée</h1>
-        <div class="clock-spinner">⏳</div>
-        <p style="color: #aaa;">En attente de l'acceptation sur le récepteur...</p>
+    <div id="start-share-screen" class="container hidden">
+        <div id="share-badge" class="mode-badge"></div>
+        <h1>Autorisée</h1>
+        <p style="color: #aaa; margin-bottom: 20px;">Cliquez pour démarrer la capture :</p>
+        <button id="start-stream-btn" onclick="confirmAndStartStream()">▶️ Lancer la diffusion</button>
     </div>
 
     <div id="mobile-streaming-screen" class="hidden">
@@ -282,8 +237,8 @@
         <div class="mobile-ui">
             <p id="zoom-text" style="color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.8); font-size: 13px;">Pincez l'écran pour zoomer</p>
             <div class="btn-row">
-                <button id="cam-toggle-btn" class="btn-compact" onclick="toggleCamera()">🔄 Caméra</button>
-                <button id="streamer-change-capture-btn" class="btn-compact" onclick="reselectMediaStream()" style="border-color: #e040fb;">🔄 Capture</button>
+                <button id="cam-toggle-btn" class="btn-compact" onclick="toggleCamera()">🔄 Renverser caméra</button>
+                <button id="streamer-change-capture-btn" class="btn-compact" onclick="reselectMediaStream()" style="border-color: #e040fb;">🔄 Changer de capture</button>
                 <button class="btn-compact" onclick="goBack()" style="background: rgba(220,53,69,0.8); border-color: #dc3545;">Arrêter</button>
             </div>
         </div>
@@ -292,14 +247,9 @@
     <div id="video-container" class="hidden" onclick="handleVideoTap()">
         <video id="full-video" autoplay playsinline></video>
         <div id="receiver-controls" class="receiver-ui">
-            <div id="viewer-zoom-box" class="zoom-control-box hidden" onclick="event.stopPropagation();">
-                <span>🔍 -</span>
-                <input type="range" id="zoom-range" class="zoom-slider" min="1" max="4" step="0.1" value="1" oninput="applyDisplayZoom(this.value)">
-                <span>+</span>
-            </div>
             <div class="btn-row">
                 <button class="btn-compact" onclick="event.stopPropagation(); toggleFullScreen();">🔲 Plein écran</button>
-                <button id="viewer-change-capture-btn" class="btn-compact" onclick="event.stopPropagation(); requestNewCapture();" style="border-color: #e040fb;">🔄 Capture</button>
+                <button id="viewer-change-capture-btn" class="btn-compact" onclick="event.stopPropagation(); requestNewCapture();" style="border-color: #e040fb;">🔄 Changer de capture</button>
                 <button class="btn-compact" onclick="event.stopPropagation(); goBack();" style="background: rgba(220,53,69,0.8); border-color: #dc3545;">🚪 Quitter</button>
             </div>
         </div>
@@ -316,15 +266,12 @@
         const socket = io('https://i-see-cam-ra.onrender.com'); 
         
         let selectedType = 'camera'; 
-        let currentRole = null; 
-        
         let currentCode = "";
         let currentFacingMode = "environment"; 
         let localStream = null;
         let zoomTrack = null;
         let startDist = 0; 
         let baseZoom = 1; 
-        let currentDisplayZoom = 1;
         let peerConnection = null;
         let targetDeviceID = null;
         let uiTimeout = null;
@@ -340,7 +287,6 @@
                 updateBadges("📷 Mode Caméra", "badge-cam");
                 document.getElementById('cam-toggle-btn').classList.remove('hidden');
                 document.getElementById('zoom-text').classList.remove('hidden');
-                document.getElementById('viewer-zoom-box').classList.remove('hidden');
                 document.getElementById('viewer-change-capture-btn').classList.add('hidden');
                 document.getElementById('streamer-change-capture-btn').classList.add('hidden');
             } else {
@@ -348,7 +294,6 @@
                 updateBadges("🖥️ Partage d'Écran", "badge-screen");
                 document.getElementById('cam-toggle-btn').classList.add('hidden');
                 document.getElementById('zoom-text').classList.add('hidden');
-                document.getElementById('viewer-zoom-box').classList.add('hidden');
                 document.getElementById('viewer-change-capture-btn').classList.remove('hidden');
                 document.getElementById('streamer-change-capture-btn').classList.remove('hidden');
             }
@@ -357,7 +302,7 @@
         }
 
         function updateBadges(text, badgeClass) {
-            ['current-badge', 'viewer-badge', 'streamer-badge', 'waiting-badge'].forEach(id => {
+            ['current-badge', 'viewer-badge', 'streamer-badge', 'share-badge'].forEach(id => {
                 const badge = document.getElementById(id);
                 if (badge) {
                     badge.innerText = text;
@@ -372,22 +317,10 @@
         }
 
         function switchScreen(screenId) {
-            ['pre-menu', 'menu', 'viewer-screen', 'streamer-screen', 'waiting-screen', 'mobile-streaming-screen', 'video-container'].forEach(id => {
+            ['pre-menu', 'menu', 'viewer-screen', 'streamer-screen', 'start-share-screen', 'mobile-streaming-screen', 'video-container'].forEach(id => {
                 document.getElementById(id).classList.add('hidden');
             });
             document.getElementById(screenId).classList.remove('hidden');
-        }
-
-        function setRole(role) {
-            currentRole = role;
-            if (role === 'viewer') {
-                switchScreen('viewer-screen');
-                document.getElementById('code-display').innerText = "......";
-                socket.emit('request-code', { role: "Récepteur", type: selectedType });
-            } else {
-                switchScreen('streamer-screen');
-                document.getElementById('code-input').value = '';
-            }
         }
 
         function goBack() {
@@ -404,15 +337,18 @@
                 socket.emit('rtc-disconnect', { to: targetDeviceID });
                 targetDeviceID = null;
             }
-            applyDisplayZoom(1);
             document.getElementById('full-video').srcObject = null;
-            document.getElementById('local-preview').srcObject = null;
-            currentRole = null;
             switchScreen('menu');
+        }
+
+        function initViewer() {
+            document.getElementById('code-display').innerText = "......";
+            socket.emit('request-code', { role: "Récepteur", type: selectedType });
         }
 
         socket.on('code-generated', (code) => {
             currentCode = code;
+            // On masque les 2 premiers caractères du code ("C-" ou "S-") pour l'utilisateur
             const displayDigits = code.substring(2); 
             document.getElementById('code-display').innerText = displayDigits;
         });
@@ -428,7 +364,7 @@
             socket.emit('permission-response', { code: currentCode, accepted });
         }
 
-        async function sendCode() {
+        function sendCode() {
             const input = document.getElementById('code-input').value.trim();
             
             if (input.length !== 6) {
@@ -436,46 +372,28 @@
                 return;
             }
 
+            // Ajout invisible du préfixe en fonction de la catégorie active
             const prefix = (selectedType === 'camera') ? "C-" : "S-";
             const fullCodeToSend = prefix + input;
+
             currentCode = fullCodeToSend;
-
-            // CRUCIAL : On lance la caméra IMMÉDIATEMENT au clic de l'utilisateur (contourne la sécurité mobile)
-            if (currentRole === 'streamer') {
-                const success = await startMediaStream();
-                if (!success) {
-                    // Si l'utilisateur refuse la caméra ou qu'il y a une erreur, on n'envoie pas la demande
-                    return;
-                }
-            }
-            
-            switchScreen('waiting-screen');
             socket.emit('verify-code', { code: fullCodeToSend, deviceName: "Émetteur", type: selectedType });
-        }
-
-        function stopLocalStreamIfAny() {
-            if(localStream) {
-                localStream.getTracks().forEach(track => track.stop());
-                localStream = null;
-            }
         }
 
         socket.on('error-message', (msg) => {
             alert("Erreur : " + msg);
-            stopLocalStreamIfAny();
-            switchScreen('streamer-screen');
             document.getElementById('code-input').value = ""; 
         });
 
         socket.on('connection-denied', () => { 
             alert("Connexion refusée par le récepteur."); 
-            stopLocalStreamIfAny();
-            switchScreen('streamer-screen');
             document.getElementById('code-input').value = "";
         });
 
         socket.on('connection-approved', async ({ targetId }) => {
             targetDeviceID = targetId;
+            const isViewer = !document.getElementById('viewer-screen').classList.contains('hidden');
+
             peerConnection = new RTCPeerConnection(rtcConfig);
 
             peerConnection.onicecandidate = (event) => {
@@ -490,29 +408,34 @@
                 }
             };
 
-            // LE RÉCEPTEUR (PC) affiche le flux reçu
-            if (currentRole === 'viewer') {
+            if (isViewer) {
                 switchScreen('video-container');
                 resetUiTimer();
-                setupViewerPinchToZoom(document.getElementById('video-container'));
                 peerConnection.ontrack = (event) => {
                     const videoElem = document.getElementById('full-video');
                     videoElem.srcObject = event.streams[0];
                     videoElem.play().catch(e => console.log(e));
                 };
-            } 
-            // L'ÉMETTEUR (Téléphone) envoie le flux déjà démarré
-            else if (currentRole === 'streamer') {
-                switchScreen('mobile-streaming-screen'); // Affiche le retour écran
-                
-                if (localStream) {
-                    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-                    const offer = await peerConnection.createOffer();
-                    await peerConnection.setLocalDescription(offer);
-                    socket.emit('rtc-signal', { to: targetDeviceID, sdp: peerConnection.localDescription });
-                }
+            } else {
+                switchScreen('start-share-screen');
             }
         });
+
+        async function confirmAndStartStream() {
+            switchScreen('mobile-streaming-screen');
+            const success = await startMediaStream();
+            
+            if (!success) {
+                goBack();
+                return;
+            }
+
+            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+            
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            socket.emit('rtc-signal', { to: targetDeviceID, sdp: peerConnection.localDescription });
+        }
 
         function handleVideoTap() {
             const controls = document.getElementById('receiver-controls');
@@ -531,60 +454,7 @@
             controls.classList.remove('ui-hidden');
             uiTimeout = setTimeout(() => {
                 controls.classList.add('ui-hidden');
-            }, 4000);
-        }
-
-        function applyDisplayZoom(val) {
-            currentDisplayZoom = Math.max(1, Math.min(4, parseFloat(val)));
-            const videoElem = document.getElementById('full-video');
-            if (videoElem) {
-                videoElem.style.transform = `scale(${currentDisplayZoom})`;
-            }
-            const slider = document.getElementById('zoom-range');
-            if (slider && parseFloat(slider.value) !== currentDisplayZoom) {
-                slider.value = currentDisplayZoom;
-            }
-        }
-
-        window.addEventListener('keydown', (e) => {
-            const isViewerActive = !document.getElementById('video-container').classList.contains('hidden');
-            if (isViewerActive && selectedType === 'camera') {
-                if (e.key === "ArrowUp") {
-                    e.preventDefault();
-                    applyDisplayZoom(currentDisplayZoom + 0.2);
-                    resetUiTimer();
-                } else if (e.key === "ArrowDown") {
-                    e.preventDefault();
-                    applyDisplayZoom(currentDisplayZoom - 0.2);
-                    resetUiTimer();
-                }
-            }
-        });
-
-        function setupViewerPinchToZoom(element) {
-            let initialDist = 0;
-            let startZoom = 1;
-
-            element.addEventListener('touchstart', (e) => {
-                if (e.touches.length === 2 && selectedType === 'camera') {
-                    initialDist = Math.hypot(
-                        e.touches[0].pageX - e.touches[1].pageX,
-                        e.touches[0].pageY - e.touches[1].pageY
-                    );
-                    startZoom = currentDisplayZoom;
-                }
-            });
-
-            element.addEventListener('touchmove', (e) => {
-                if (e.touches.length === 2 && selectedType === 'camera') {
-                    const currentDist = Math.hypot(
-                        e.touches[0].pageX - e.touches[1].pageX,
-                        e.touches[0].pageY - e.touches[1].pageY
-                    );
-                    const scaleChange = (currentDist - initialDist) * 0.008;
-                    applyDisplayZoom(startZoom + scaleChange);
-                }
-            });
+            }, 3000);
         }
 
         function requestNewCapture() {
@@ -626,7 +496,7 @@
         socket.on('rtc-disconnect', () => goBack());
 
         async function startMediaStream() {
-            stopLocalStreamIfAny(); // Nettoyage propre avant de relancer
+            if (localStream) localStream.getTracks().forEach(track => track.stop());
 
             try {
                 if (selectedType === 'camera') {
@@ -649,15 +519,12 @@
                     localStream.getVideoTracks()[0].onended = () => goBack();
                 }
 
-                // Affectation au retour vidéo local (Sur l'émetteur)
                 const videoElement = document.getElementById('local-preview');
                 videoElement.srcObject = localStream;
-                await videoElement.play().catch(e => console.log(e));
-                
                 return true;
 
             } catch (err) {
-                alert("Impossible d'accéder à la caméra/l'écran : " + err.message);
+                alert("Impossible de démarrer la capture : " + err.message);
                 return false;
             }
         }
@@ -665,7 +532,7 @@
         async function toggleCamera() {
             if (selectedType !== 'camera') return;
             currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
-            await startMediaStream(); // Relance avec la nouvelle caméra
+            await startMediaStream();
             if (peerConnection && localStream) {
                 const senders = peerConnection.getSenders();
                 const videoTrack = localStream.getVideoTracks()[0];
@@ -719,4 +586,4 @@
         }
     </script>
 </body>
-</html>µ
+</html>
