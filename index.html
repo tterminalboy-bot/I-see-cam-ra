@@ -297,8 +297,8 @@
                     <input type="range" id="receiver-zoom-slider" min="1" max="5" step="0.1" value="1" style="width: 70%; cursor: pointer;" oninput="onReceiverSliderInput(this.value)">
                 </div>
                 <div style="display: flex; gap: 8px;">
-                    <button class="btn-compact" onclick="event.stopPropagation(); startKeyBind('in')">Zoom In : <span id="key-in-label" style="color: #00f2ff;">P</span></button>
-                    <button class="btn-compact" onclick="event.stopPropagation(); startKeyBind('out')">Zoom Out : <span id="key-out-label" style="color: #00f2ff;">A</span></button>
+                    <button class="btn-compact" onclick="event.stopPropagation(); startKeyBind('in')">Zoom In : <span id="key-in-label" style="color: #00f2ff;">Aucune</span></button>
+                    <button class="btn-compact" onclick="event.stopPropagation(); startKeyBind('out')">Zoom Out : <span id="key-out-label" style="color: #00f2ff;">Aucune</span></button>
                 </div>
             </div>
             <div class="btn-row">
@@ -311,7 +311,7 @@
 
     <div id="popup" class="container hidden" style="position: absolute; z-index: 100; background: #111126;">
         <h1>⚠️ Autorisation</h1>
-        <p id="popup-text">Un appareil souhaite se connecter.</p>
+        <p id="popup-text">Un appareil tente de se connecter.</p>
         <button onclick="respondPermission(true)" style="background: #28a745;">Autoriser l'accès</button>
         <button onclick="respondPermission(false)" style="background: #dc3545;">Refuser</button>
     </div>
@@ -330,12 +330,10 @@
         let targetDeviceID = null;
         let uiTimeout = null;
 
-        // Variables pour les raccourcis de zoom personnalisables côté récepteur
-        let keyIn = 'KeyP';
-        let keyOut = 'KeyA';
-        let keyInDisplay = 'P';
-        let keyOutDisplay = 'A';
-        let bindingTarget = null; // 'in' ou 'out'
+        // Aucune touche configurée par défaut
+        let keyIn = null;
+        let keyOut = null;
+        let bindingTarget = null; 
         let activeKeys = {};
         let zoomInterval = null;
 
@@ -424,8 +422,8 @@
         });
 
         socket.on('ask-permission', ({ streamerName }) => {
-            const label = selectedType === 'camera' ? 'sa caméra' : 'son écran';
-            document.getElementById('popup-text').innerText = `L'appareil distant souhaite partager ${label}. Autoriser ?`;
+            // Nouveau texte exact demandé
+            document.getElementById('popup-text').innerText = "Un appareil tente de se connecter. Voulez-vous l'autoriser ?";
             document.getElementById('popup').classList.remove('hidden');
         });
 
@@ -485,7 +483,6 @@
                 switchScreen('video-container');
                 resetUiTimer();
                 
-                // Afficher le panneau de zoom récepteur uniquement en mode caméra
                 if (selectedType === 'camera') {
                     document.getElementById('receiver-zoom-panel').classList.remove('hidden');
                 } else {
@@ -498,7 +495,9 @@
                     videoElem.play().catch(e => console.log(e));
                 };
             } else {
+                // Émetteur : Basculement direct de l'écran d'attente vers l'affichage, avec mise en plein écran automatique immédiate
                 switchScreen('mobile-streaming-screen');
+                toggleFullScreen(); 
                 
                 if (selectedType === 'camera') {
                     document.getElementById('camera-grid').classList.remove('hidden');
@@ -563,15 +562,12 @@
             }
         }
 
-        // --- Gestion du Zoom à distance (Récepteur -> Émetteur) ---
-
         function onReceiverSliderInput(val) {
             if (targetDeviceID) {
                 socket.emit('zoom-command', { to: targetDeviceID, value: parseFloat(val) });
             }
         }
 
-        // Réception de la commande de zoom sur l'émetteur
         socket.on('zoom-command', async ({ value }) => {
             if (zoomTrack && selectedType === 'camera') {
                 const capabilities = zoomTrack.getCapabilities();
@@ -587,7 +583,6 @@
             }
         });
 
-        // Personnalisation des touches de zoom (Récepteur)
         function startKeyBind(target) {
             bindingTarget = target;
             const labelId = target === 'in' ? 'key-in-label' : 'key-out-label';
@@ -601,23 +596,22 @@
                 const display = e.key.toUpperCase();
                 if (bindingTarget === 'in') {
                     keyIn = code;
-                    keyInDisplay = display;
                     document.getElementById('key-in-label').innerText = display;
                 } else {
                     keyOut = code;
-                    keyOutDisplay = display;
                     document.getElementById('key-out-label').innerText = display;
                 }
                 bindingTarget = null;
                 return;
             }
 
-            // Gestion du maintien des touches de zoom sur le récepteur
             const isViewerActive = !document.getElementById('video-container').classList.contains('hidden');
             if (isViewerActive && selectedType === 'camera' && targetDeviceID) {
-                if ((e.code === keyIn || e.code === keyOut) && !activeKeys[e.code]) {
-                    activeKeys[e.code] = true;
-                    startZoomLoop();
+                if ((keyIn && e.code === keyIn) || (keyOut && e.code === keyOut)) {
+                    if (!activeKeys[e.code]) {
+                        activeKeys[e.code] = true;
+                        startZoomLoop();
+                    }
                 }
             }
         });
@@ -635,14 +629,15 @@
         function startZoomLoop() {
             if (zoomInterval) return;
             zoomInterval = setInterval(() => {
+                if (!keyIn && !keyOut) return;
                 const slider = document.getElementById('receiver-zoom-slider');
                 if (!slider) return;
                 let currentVal = parseFloat(slider.value);
                 let step = 0.1;
 
-                if (activeKeys[keyIn]) {
+                if (keyIn && activeKeys[keyIn]) {
                     currentVal = Math.min(parseFloat(slider.max), currentVal + step);
-                } else if (activeKeys[keyOut]) {
+                } else if (keyOut && activeKeys[keyOut]) {
                     currentVal = Math.max(parseFloat(slider.min), currentVal - step);
                 }
 
