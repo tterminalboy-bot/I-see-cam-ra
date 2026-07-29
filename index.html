@@ -115,10 +115,18 @@
         }
         .hidden { display: none !important; }
         
-        /* Animation du sablier d'attente */
+        /* Écran d'attente parfaitement centré avec espace pour le sablier */
+        #waiting-approval-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 220px;
+        }
+
         .spinner {
-            font-size: 50px;
-            margin-bottom: 15px;
+            font-size: 55px;
+            margin-bottom: 25px;
             display: inline-block;
             animation: spin 2s linear infinite;
         }
@@ -239,17 +247,9 @@
 
     <div id="waiting-approval-screen" class="container hidden">
         <button class="back-btn" onclick="goBack()">←</button>
-        <div id="waiting-badge" class="mode-badge"></div>
         <div class="spinner">⌛</div>
-        <h1>En attente...</h1>
-        <p style="color: #aaa;">Demande envoyée au récepteur.<br>En attente d'approbation...</p>
-    </div>
-
-    <div id="start-share-screen" class="container hidden">
-        <div id="share-badge" class="mode-badge"></div>
-        <h1>Autorisée</h1>
-        <p style="color: #aaa; margin-bottom: 20px;">Cliquez pour démarrer la capture :</p>
-        <button id="start-stream-btn" onclick="confirmAndStartStream()">▶️ Lancer la diffusion</button>
+        <h1 style="margin-bottom: 10px;">En attente...</h1>
+        <p style="color: #aaa; margin: 0;">Demande envoyée.<br>En attente de l'approbation du récepteur...</p>
     </div>
 
     <div id="mobile-streaming-screen" class="hidden">
@@ -323,7 +323,7 @@
         }
 
         function updateBadges(text, badgeClass) {
-            ['current-badge', 'viewer-badge', 'streamer-badge', 'waiting-badge', 'share-badge'].forEach(id => {
+            ['current-badge', 'viewer-badge', 'streamer-badge', 'share-badge'].forEach(id => {
                 const badge = document.getElementById(id);
                 if (badge) {
                     badge.innerText = text;
@@ -338,7 +338,7 @@
         }
 
         function switchScreen(screenId) {
-            ['pre-menu', 'menu', 'viewer-screen', 'streamer-screen', 'waiting-approval-screen', 'start-share-screen', 'mobile-streaming-screen', 'video-container'].forEach(id => {
+            ['pre-menu', 'menu', 'viewer-screen', 'streamer-screen', 'waiting-approval-screen', 'mobile-streaming-screen', 'video-container'].forEach(id => {
                 const elem = document.getElementById(id);
                 if (elem) elem.classList.add('hidden');
             });
@@ -399,7 +399,6 @@
             currentCode = fullCodeToSend;
             socket.emit('verify-code', { code: fullCodeToSend, deviceName: "Émetteur", type: selectedType });
             
-            // Affichage de la page d'attente
             switchScreen('waiting-approval-screen');
         }
 
@@ -442,25 +441,22 @@
                     videoElem.play().catch(e => console.log(e));
                 };
             } else {
-                switchScreen('start-share-screen');
+                // Lancement direct de la diffusion sans étape intermédiaire
+                switchScreen('mobile-streaming-screen');
+                const success = await startMediaStream();
+                
+                if (!success) {
+                    goBack();
+                    return;
+                }
+
+                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+                
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                socket.emit('rtc-signal', { to: targetDeviceID, sdp: peerConnection.localDescription });
             }
         });
-
-        async function confirmAndStartStream() {
-            switchScreen('mobile-streaming-screen');
-            const success = await startMediaStream();
-            
-            if (!success) {
-                goBack();
-                return;
-            }
-
-            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-            
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-            socket.emit('rtc-signal', { to: targetDeviceID, sdp: peerConnection.localDescription });
-        }
 
         function handleVideoTap() {
             const controls = document.getElementById('receiver-controls');
