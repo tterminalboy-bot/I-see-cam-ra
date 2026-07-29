@@ -70,7 +70,6 @@ io.on('connection', (socket) => {
         io.to(to).emit('request-reselect');
     });
 
-    // Transmission des commandes de zoom du récepteur vers l'émetteur
     socket.on('zoom-command', ({ to, value }) => {
         io.to(to).emit('zoom-command', { value });
     });
