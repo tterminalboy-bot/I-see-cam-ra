@@ -200,7 +200,6 @@
             object-fit: contain;
         }
         
-        /* Quadrillage d'aide à la visée (Émetteur Caméra uniquement) */
         #camera-grid {
             position: absolute;
             top: 0; left: 0;
@@ -292,6 +291,16 @@
     <div id="video-container" class="hidden" onclick="handleVideoTap()">
         <video id="full-video" autoplay playsinline></video>
         <div id="receiver-controls" class="receiver-ui">
+            <div id="receiver-zoom-panel" class="hidden" style="background: rgba(0,0,0,0.85); padding: 12px; border-radius: 10px; border: 1px solid #00f2ff; margin-bottom: 10px; pointer-events: auto;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                    <span style="font-size: 12px; color: #00f2ff; font-weight: bold;">🔍 Zoom Caméra</span>
+                    <input type="range" id="receiver-zoom-slider" min="1" max="5" step="0.1" value="1" style="width: 70%; cursor: pointer;" oninput="onReceiverSliderInput(this.value)">
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn-compact" onclick="event.stopPropagation(); startKeyBind('in')">Zoom In : <span id="key-in-label" style="color: #00f2ff;">P</span></button>
+                    <button class="btn-compact" onclick="event.stopPropagation(); startKeyBind('out')">Zoom Out : <span id="key-out-label" style="color: #00f2ff;">A</span></button>
+                </div>
+            </div>
             <div class="btn-row">
                 <button class="btn-compact" onclick="event.stopPropagation(); toggleFullScreen();">🔲 Plein écran</button>
                 <button id="viewer-change-capture-btn" class="btn-compact" onclick="event.stopPropagation(); requestNewCapture();" style="border-color: #e040fb;">🔄 Changer de capture</button>
@@ -320,6 +329,15 @@
         let peerConnection = null;
         let targetDeviceID = null;
         let uiTimeout = null;
+
+        // Variables pour les raccourcis de zoom personnalisables côté récepteur
+        let keyIn = 'KeyP';
+        let keyOut = 'KeyA';
+        let keyInDisplay = 'P';
+        let keyOutDisplay = 'A';
+        let bindingTarget = null; // 'in' ou 'out'
+        let activeKeys = {};
+        let zoomInterval = null;
 
         const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
@@ -369,7 +387,14 @@
             document.getElementById(screenId).classList.remove('hidden');
         }
 
+        function exitFullScreenIfNeeded() {
+            if (document.fullscreenElement) {
+                document.exitFullscreen().catch(err => {});
+            }
+        }
+
         function goBack() {
+            exitFullScreenIfNeeded();
             if(uiTimeout) clearTimeout(uiTimeout);
             if(localStream) {
                 localStream.getTracks().forEach(track => track.stop());
@@ -459,6 +484,14 @@
             if (isViewer) {
                 switchScreen('video-container');
                 resetUiTimer();
+                
+                // Afficher le panneau de zoom récepteur uniquement en mode caméra
+                if (selectedType === 'camera') {
+                    document.getElementById('receiver-zoom-panel').classList.remove('hidden');
+                } else {
+                    document.getElementById('receiver-zoom-panel').classList.add('hidden');
+                }
+
                 peerConnection.ontrack = (event) => {
                     const videoElem = document.getElementById('full-video');
                     videoElem.srcObject = event.streams[0];
@@ -467,7 +500,6 @@
             } else {
                 switchScreen('mobile-streaming-screen');
                 
-                // Gestion de l'affichage du quadrillage (uniquement en mode caméra sur l'émetteur)
                 if (selectedType === 'camera') {
                     document.getElementById('camera-grid').classList.remove('hidden');
                 } else {
@@ -531,6 +563,94 @@
             }
         }
 
+        // --- Gestion du Zoom à distance (Récepteur -> Émetteur) ---
+
+        function onReceiverSliderInput(val) {
+            if (targetDeviceID) {
+                socket.emit('zoom-command', { to: targetDeviceID, value: parseFloat(val) });
+            }
+        }
+
+        // Réception de la commande de zoom sur l'émetteur
+        socket.on('zoom-command', async ({ value }) => {
+            if (zoomTrack && selectedType === 'camera') {
+                const capabilities = zoomTrack.getCapabilities();
+                if (!capabilities.zoom) return;
+                const newZoom = Math.max(capabilities.zoom.min, Math.min(capabilities.zoom.max, value));
+                try {
+                    await zoomTrack.applyConstraints({ advanced: [{ zoom: newZoom }] });
+                    const slider = document.getElementById('receiver-zoom-slider');
+                    if (slider) slider.value = newZoom;
+                } catch (err) {
+                    console.log("Erreur application zoom", err);
+                }
+            }
+        });
+
+        // Personnalisation des touches de zoom (Récepteur)
+        function startKeyBind(target) {
+            bindingTarget = target;
+            const labelId = target === 'in' ? 'key-in-label' : 'key-out-label';
+            document.getElementById(labelId).innerText = "...";
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (bindingTarget) {
+                e.preventDefault();
+                const code = e.code;
+                const display = e.key.toUpperCase();
+                if (bindingTarget === 'in') {
+                    keyIn = code;
+                    keyInDisplay = display;
+                    document.getElementById('key-in-label').innerText = display;
+                } else {
+                    keyOut = code;
+                    keyOutDisplay = display;
+                    document.getElementById('key-out-label').innerText = display;
+                }
+                bindingTarget = null;
+                return;
+            }
+
+            // Gestion du maintien des touches de zoom sur le récepteur
+            const isViewerActive = !document.getElementById('video-container').classList.contains('hidden');
+            if (isViewerActive && selectedType === 'camera' && targetDeviceID) {
+                if ((e.code === keyIn || e.code === keyOut) && !activeKeys[e.code]) {
+                    activeKeys[e.code] = true;
+                    startZoomLoop();
+                }
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (activeKeys[e.code]) {
+                delete activeKeys[e.code];
+                if (Object.keys(activeKeys).length === 0 && zoomInterval) {
+                    clearInterval(zoomInterval);
+                    zoomInterval = null;
+                }
+            }
+        });
+
+        function startZoomLoop() {
+            if (zoomInterval) return;
+            zoomInterval = setInterval(() => {
+                const slider = document.getElementById('receiver-zoom-slider');
+                if (!slider) return;
+                let currentVal = parseFloat(slider.value);
+                let step = 0.1;
+
+                if (activeKeys[keyIn]) {
+                    currentVal = Math.min(parseFloat(slider.max), currentVal + step);
+                } else if (activeKeys[keyOut]) {
+                    currentVal = Math.max(parseFloat(slider.min), currentVal - step);
+                }
+
+                slider.value = currentVal.toFixed(1);
+                onReceiverSliderInput(slider.value);
+            }, 80);
+        }
+
         socket.on('rtc-signal', async ({ sdp, candidate }) => {
             if (!peerConnection) return;
             if (sdp) {
@@ -545,7 +665,10 @@
             }
         });
 
-        socket.on('rtc-disconnect', () => goBack());
+        socket.on('rtc-disconnect', () => {
+            exitFullScreenIfNeeded();
+            goBack();
+        });
 
         async function startMediaStream() {
             if (localStream) localStream.getTracks().forEach(track => track.stop());
@@ -568,7 +691,10 @@
                         video: true,
                         audio: false
                     });
-                    localStream.getVideoTracks()[0].onended = () => goBack();
+                    localStream.getVideoTracks()[0].onended = () => {
+                        exitFullScreenIfNeeded();
+                        goBack();
+                    };
                 }
 
                 const videoElement = document.getElementById('local-preview');
@@ -597,7 +723,7 @@
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen().catch(err => console.log(err));
             } else {
-                document.exitFullscreen();
+                document.exitFullscreen().catch(err => {});
             }
         }
 
