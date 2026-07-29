@@ -41,10 +41,10 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // On sauvegarde l'ID de l'émetteur
+        // Sauvegarde de l'ID de l'émetteur
         target.streamerSocketId = socket.id;
 
-        // On demande la permission au récepteur
+        // Demande de permission au récepteur
         io.to(target.socketId).emit('ask-permission', { 
             streamerId: socket.id, 
             streamerName: deviceName 
@@ -59,9 +59,7 @@ io.on('connection', (socket) => {
             const streamerSocketId = target.streamerSocketId; // Émetteur (Téléphone)
 
             if (accepted) {
-                // L'émetteur reçoit l'ID du récepteur
                 io.to(streamerSocketId).emit('connection-approved', { targetId: viewerSocketId });
-                // Le récepteur reçoit l'ID de l'émetteur
                 io.to(viewerSocketId).emit('connection-approved', { targetId: streamerSocketId });
             } else {
                 io.to(streamerSocketId).emit('connection-denied');
