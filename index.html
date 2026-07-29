@@ -84,7 +84,7 @@
         .theme-screen button { background: linear-gradient(135deg, #e040fb, #4a00e0); }
         button:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,242,255,0.4); }
 
-        input {
+        input[type="text"] {
             padding: 14px;
             border-radius: 10px;
             border: 1px solid #222;
@@ -115,6 +115,20 @@
         }
         .hidden { display: none !important; }
         
+        /* Animation Horloge Attente */
+        .clock-spinner {
+            font-size: 50px;
+            margin: 20px 0;
+            display: inline-block;
+            animation: pulseClock 1.5s infinite ease-in-out;
+        }
+
+        @keyframes pulseClock {
+            0% { transform: scale(1); opacity: 0.8; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(1); opacity: 0.8; }
+        }
+
         #video-container {
             position: fixed;
             top: 0; left: 0;
@@ -122,10 +136,14 @@
             background: black;
             z-index: 90;
             cursor: pointer;
+            overflow: hidden;
         }
+        
         #full-video {
             width: 100%; height: 100%;
             object-fit: contain;
+            transition: transform 0.1s linear;
+            transform-origin: center center;
         }
 
         .receiver-ui {
@@ -144,6 +162,31 @@
             opacity: 0;
             transform: translate(-50%, 20px);
             pointer-events: none;
+        }
+
+        .zoom-control-box {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.75);
+            padding: 8px 16px;
+            border-radius: 20px;
+            margin-bottom: 12px;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(0, 242, 255, 0.3);
+        }
+
+        .zoom-control-box span {
+            font-size: 14px;
+            font-weight: bold;
+            color: #00f2ff;
+        }
+
+        .zoom-slider {
+            flex: 1;
+            accent-color: #00f2ff;
+            cursor: pointer;
         }
 
         .btn-row {
@@ -214,7 +257,7 @@
         <div id="viewer-badge" class="mode-badge"></div>
         <h1>Code de Liaison</h1>
         <div id="code-display" style="font-size: 36px; font-weight: bold; color: #00f2ff; margin: 20px 0; letter-spacing: 4px;">......</div>
-        <p style="color: #aaa;">Entrez ce code à 6 chiffres sur l'émetteur.</p>
+        <p style="color: #aaa;">Entrez ce code sur l'émetteur.</p>
     </div>
 
     <div id="streamer-screen" class="container hidden">
@@ -222,14 +265,15 @@
         <div id="streamer-badge" class="mode-badge"></div>
         <h1>Connexion</h1>
         <input type="text" id="code-input" placeholder="000000" maxlength="6" inputmode="numeric" pattern="[0-9]*" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
-        <button onclick="sendCode()">Demander la liaison</button>
+        <button onclick="sendCode()">Connexion</button>
     </div>
 
-    <div id="start-share-screen" class="container hidden">
-        <div id="share-badge" class="mode-badge"></div>
-        <h1>Autorisée</h1>
-        <p style="color: #aaa; margin-bottom: 20px;">Cliquez pour démarrer la capture :</p>
-        <button id="start-stream-btn" onclick="confirmAndStartStream()">▶️ Lancer la diffusion</button>
+    <div id="waiting-screen" class="container hidden">
+        <button class="back-btn" onclick="goBack()">←</button>
+        <div id="waiting-badge" class="mode-badge"></div>
+        <h1>Demande envoyée</h1>
+        <div class="clock-spinner">⏳</div>
+        <p style="color: #aaa;">En attente de l'acceptation sur l'appareil récepteur...</p>
     </div>
 
     <div id="mobile-streaming-screen" class="hidden">
@@ -247,6 +291,11 @@
     <div id="video-container" class="hidden" onclick="handleVideoTap()">
         <video id="full-video" autoplay playsinline></video>
         <div id="receiver-controls" class="receiver-ui">
+            <div id="viewer-zoom-box" class="zoom-control-box hidden" onclick="event.stopPropagation();">
+                <span>🔍 -</span>
+                <input type="range" id="zoom-range" class="zoom-slider" min="1" max="4" step="0.1" value="1" oninput="applyDisplayZoom(this.value)">
+                <span>+</span>
+            </div>
             <div class="btn-row">
                 <button class="btn-compact" onclick="event.stopPropagation(); toggleFullScreen();">🔲 Plein écran</button>
                 <button id="viewer-change-capture-btn" class="btn-compact" onclick="event.stopPropagation(); requestNewCapture();" style="border-color: #e040fb;">🔄 Changer de capture</button>
@@ -272,6 +321,7 @@
         let zoomTrack = null;
         let startDist = 0; 
         let baseZoom = 1; 
+        let currentDisplayZoom = 1;
         let peerConnection = null;
         let targetDeviceID = null;
         let uiTimeout = null;
@@ -287,6 +337,7 @@
                 updateBadges("📷 Mode Caméra", "badge-cam");
                 document.getElementById('cam-toggle-btn').classList.remove('hidden');
                 document.getElementById('zoom-text').classList.remove('hidden');
+                document.getElementById('viewer-zoom-box').classList.remove('hidden');
                 document.getElementById('viewer-change-capture-btn').classList.add('hidden');
                 document.getElementById('streamer-change-capture-btn').classList.add('hidden');
             } else {
@@ -294,6 +345,7 @@
                 updateBadges("🖥️ Partage d'Écran", "badge-screen");
                 document.getElementById('cam-toggle-btn').classList.add('hidden');
                 document.getElementById('zoom-text').classList.add('hidden');
+                document.getElementById('viewer-zoom-box').classList.add('hidden');
                 document.getElementById('viewer-change-capture-btn').classList.remove('hidden');
                 document.getElementById('streamer-change-capture-btn').classList.remove('hidden');
             }
@@ -302,7 +354,7 @@
         }
 
         function updateBadges(text, badgeClass) {
-            ['current-badge', 'viewer-badge', 'streamer-badge', 'share-badge'].forEach(id => {
+            ['current-badge', 'viewer-badge', 'streamer-badge', 'waiting-badge'].forEach(id => {
                 const badge = document.getElementById(id);
                 if (badge) {
                     badge.innerText = text;
@@ -317,7 +369,7 @@
         }
 
         function switchScreen(screenId) {
-            ['pre-menu', 'menu', 'viewer-screen', 'streamer-screen', 'start-share-screen', 'mobile-streaming-screen', 'video-container'].forEach(id => {
+            ['pre-menu', 'menu', 'viewer-screen', 'streamer-screen', 'waiting-screen', 'mobile-streaming-screen', 'video-container'].forEach(id => {
                 document.getElementById(id).classList.add('hidden');
             });
             document.getElementById(screenId).classList.remove('hidden');
@@ -337,7 +389,9 @@
                 socket.emit('rtc-disconnect', { to: targetDeviceID });
                 targetDeviceID = null;
             }
+            applyDisplayZoom(1);
             document.getElementById('full-video').srcObject = null;
+            document.getElementById('local-preview').srcObject = null;
             switchScreen('menu');
         }
 
@@ -348,7 +402,6 @@
 
         socket.on('code-generated', (code) => {
             currentCode = code;
-            // On masque les 2 premiers caractères du code ("C-" ou "S-") pour l'utilisateur
             const displayDigits = code.substring(2); 
             document.getElementById('code-display').innerText = displayDigits;
         });
@@ -372,21 +425,25 @@
                 return;
             }
 
-            // Ajout invisible du préfixe en fonction de la catégorie active
             const prefix = (selectedType === 'camera') ? "C-" : "S-";
             const fullCodeToSend = prefix + input;
 
             currentCode = fullCodeToSend;
+            
+            // Affichage immédiat de l'écran d'attente
+            switchScreen('waiting-screen');
             socket.emit('verify-code', { code: fullCodeToSend, deviceName: "Émetteur", type: selectedType });
         }
 
         socket.on('error-message', (msg) => {
             alert("Erreur : " + msg);
+            switchScreen('streamer-screen');
             document.getElementById('code-input').value = ""; 
         });
 
         socket.on('connection-denied', () => { 
             alert("Connexion refusée par le récepteur."); 
+            switchScreen('streamer-screen');
             document.getElementById('code-input').value = "";
         });
 
@@ -411,31 +468,29 @@
             if (isViewer) {
                 switchScreen('video-container');
                 resetUiTimer();
+                setupViewerPinchToZoom(document.getElementById('video-container'));
                 peerConnection.ontrack = (event) => {
                     const videoElem = document.getElementById('full-video');
                     videoElem.srcObject = event.streams[0];
                     videoElem.play().catch(e => console.log(e));
                 };
             } else {
-                switchScreen('start-share-screen');
+                // Émetteur : Lancement immédiat de la capture et envoi automatique
+                switchScreen('mobile-streaming-screen');
+                const success = await startMediaStream();
+                
+                if (!success) {
+                    goBack();
+                    return;
+                }
+
+                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+                
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                socket.emit('rtc-signal', { to: targetDeviceID, sdp: peerConnection.localDescription });
             }
         });
-
-        async function confirmAndStartStream() {
-            switchScreen('mobile-streaming-screen');
-            const success = await startMediaStream();
-            
-            if (!success) {
-                goBack();
-                return;
-            }
-
-            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-            
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-            socket.emit('rtc-signal', { to: targetDeviceID, sdp: peerConnection.localDescription });
-        }
 
         function handleVideoTap() {
             const controls = document.getElementById('receiver-controls');
@@ -454,7 +509,60 @@
             controls.classList.remove('ui-hidden');
             uiTimeout = setTimeout(() => {
                 controls.classList.add('ui-hidden');
-            }, 3000);
+            }, 4000);
+        }
+
+        function applyDisplayZoom(val) {
+            currentDisplayZoom = Math.max(1, Math.min(4, parseFloat(val)));
+            const videoElem = document.getElementById('full-video');
+            if (videoElem) {
+                videoElem.style.transform = `scale(${currentDisplayZoom})`;
+            }
+            const slider = document.getElementById('zoom-range');
+            if (slider && parseFloat(slider.value) !== currentDisplayZoom) {
+                slider.value = currentDisplayZoom;
+            }
+        }
+
+        window.addEventListener('keydown', (e) => {
+            const isViewerActive = !document.getElementById('video-container').classList.contains('hidden');
+            if (isViewerActive && selectedType === 'camera') {
+                if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    applyDisplayZoom(currentDisplayZoom + 0.2);
+                    resetUiTimer();
+                } else if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    applyDisplayZoom(currentDisplayZoom - 0.2);
+                    resetUiTimer();
+                }
+            }
+        });
+
+        function setupViewerPinchToZoom(element) {
+            let initialDist = 0;
+            let startZoom = 1;
+
+            element.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 2 && selectedType === 'camera') {
+                    initialDist = Math.hypot(
+                        e.touches[0].pageX - e.touches[1].pageX,
+                        e.touches[0].pageY - e.touches[1].pageY
+                    );
+                    startZoom = currentDisplayZoom;
+                }
+            });
+
+            element.addEventListener('touchmove', (e) => {
+                if (e.touches.length === 2 && selectedType === 'camera') {
+                    const currentDist = Math.hypot(
+                        e.touches[0].pageX - e.touches[1].pageX,
+                        e.touches[0].pageY - e.touches[1].pageY
+                    );
+                    const scaleChange = (currentDist - initialDist) * 0.008;
+                    applyDisplayZoom(startZoom + scaleChange);
+                }
+            });
         }
 
         function requestNewCapture() {
@@ -521,6 +629,7 @@
 
                 const videoElement = document.getElementById('local-preview');
                 videoElement.srcObject = localStream;
+                await videoElement.play().catch(e => console.log(e));
                 return true;
 
             } catch (err) {
