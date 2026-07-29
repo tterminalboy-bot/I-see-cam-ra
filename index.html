@@ -311,7 +311,7 @@
 
     <div id="popup" class="container hidden" style="position: absolute; z-index: 100; background: #111126;">
         <h1>⚠️ Autorisation</h1>
-        <p id="popup-text">Un appareil tente de se connecter.</p>
+        <p id="popup-text">Un appareil tente de se connecter. Voulez-vous l'autoriser ?</p>
         <button onclick="respondPermission(true)" style="background: #28a745;">Autoriser l'accès</button>
         <button onclick="respondPermission(false)" style="background: #dc3545;">Refuser</button>
     </div>
@@ -330,7 +330,6 @@
         let targetDeviceID = null;
         let uiTimeout = null;
 
-        // Aucune touche configurée par défaut
         let keyIn = null;
         let keyOut = null;
         let bindingTarget = null; 
@@ -422,7 +421,6 @@
         });
 
         socket.on('ask-permission', ({ streamerName }) => {
-            // Nouveau texte exact demandé
             document.getElementById('popup-text').innerText = "Un appareil tente de se connecter. Voulez-vous l'autoriser ?";
             document.getElementById('popup').classList.remove('hidden');
         });
@@ -495,7 +493,6 @@
                     videoElem.play().catch(e => console.log(e));
                 };
             } else {
-                // Émetteur : Basculement direct de l'écran d'attente vers l'affichage, avec mise en plein écran automatique immédiate
                 switchScreen('mobile-streaming-screen');
                 toggleFullScreen(); 
                 
@@ -535,9 +532,10 @@
             if (uiTimeout) clearTimeout(uiTimeout);
             const controls = document.getElementById('receiver-controls');
             controls.classList.remove('ui-hidden');
+            // Délai rallongé à 7 secondes (7000 ms)
             uiTimeout = setTimeout(() => {
                 controls.classList.add('ui-hidden');
-            }, 3000);
+            }, 7000);
         }
 
         function requestNewCapture() {
@@ -630,133 +628,4 @@
             if (zoomInterval) return;
             zoomInterval = setInterval(() => {
                 if (!keyIn && !keyOut) return;
-                const slider = document.getElementById('receiver-zoom-slider');
-                if (!slider) return;
-                let currentVal = parseFloat(slider.value);
-                let step = 0.1;
-
-                if (keyIn && activeKeys[keyIn]) {
-                    currentVal = Math.min(parseFloat(slider.max), currentVal + step);
-                } else if (keyOut && activeKeys[keyOut]) {
-                    currentVal = Math.max(parseFloat(slider.min), currentVal - step);
-                }
-
-                slider.value = currentVal.toFixed(1);
-                onReceiverSliderInput(slider.value);
-            }, 80);
-        }
-
-        socket.on('rtc-signal', async ({ sdp, candidate }) => {
-            if (!peerConnection) return;
-            if (sdp) {
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
-                if (peerConnection.remoteDescription.type === 'offer') {
-                    const answer = await peerConnection.createAnswer();
-                    await peerConnection.setLocalDescription(answer);
-                    socket.emit('rtc-signal', { to: targetDeviceID, sdp: peerConnection.localDescription }); 
-                }
-            } else if (candidate) {
-                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.log(e));
-            }
-        });
-
-        socket.on('rtc-disconnect', () => {
-            exitFullScreenIfNeeded();
-            goBack();
-        });
-
-        async function startMediaStream() {
-            if (localStream) localStream.getTracks().forEach(track => track.stop());
-
-            try {
-                if (selectedType === 'camera') {
-                    localStream = await navigator.mediaDevices.getUserMedia({
-                        video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
-                        audio: false
-                    });
-                    zoomTrack = localStream.getVideoTracks()[0];
-                    setupPinchToZoom(document.getElementById('local-preview'));
-                } else {
-                    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-                        alert("Le navigateur ne prend pas en charge la capture d'écran directe.");
-                        return false;
-                    }
-
-                    localStream = await navigator.mediaDevices.getDisplayMedia({
-                        video: true,
-                        audio: false
-                    });
-                    localStream.getVideoTracks()[0].onended = () => {
-                        exitFullScreenIfNeeded();
-                        goBack();
-                    };
-                }
-
-                const videoElement = document.getElementById('local-preview');
-                videoElement.srcObject = localStream;
-                return true;
-
-            } catch (err) {
-                alert("Impossible de démarrer la capture : " + err.message);
-                return false;
-            }
-        }
-
-        async function toggleCamera() {
-            if (selectedType !== 'camera') return;
-            currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
-            await startMediaStream();
-            if (peerConnection && localStream) {
-                const senders = peerConnection.getSenders();
-                const videoTrack = localStream.getVideoTracks()[0];
-                const sender = senders.find(s => s.track && s.track.kind === 'video');
-                if (sender) sender.replaceTrack(videoTrack);
-            }
-        }
-
-        function toggleFullScreen() {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(err => console.log(err));
-            } else {
-                document.exitFullscreen().catch(err => {});
-            }
-        }
-
-        function setupPinchToZoom(element) {
-            element.addEventListener('touchstart', (e) => {
-                if (e.touches.length === 2 && zoomTrack && selectedType === 'camera') {
-                    startDist = Math.hypot(
-                        e.touches[0].pageX - e.touches[1].pageX,
-                        e.touches[0].pageY - e.touches[1].pageY
-                    );
-                    const settings = zoomTrack.getSettings();
-                    baseZoom = settings.zoom || 1; 
-                }
-            });
-
-            element.addEventListener('touchmove', async (e) => {
-                if (e.touches.length === 2 && zoomTrack && selectedType === 'camera') {
-                    const capabilities = zoomTrack.getCapabilities();
-                    if (!capabilities.zoom) return; 
-
-                    const currentDist = Math.hypot(
-                        e.touches[0].pageX - e.touches[1].pageX,
-                        e.touches[0].pageY - e.touches[1].pageY
-                    );
-
-                    const delta = (currentDist - startDist) * 0.01; 
-                    let newZoom = baseZoom + delta;
-
-                    newZoom = Math.max(capabilities.zoom.min, Math.min(capabilities.zoom.max, newZoom));
-
-                    try {
-                        await zoomTrack.applyConstraints({ advanced: [{ zoom: newZoom }] });
-                    } catch (err) {
-                        console.log("Erreur zoom", err);
-                    }
-                }
-            });
-        }
-    </script>
-</body>
-</html>
+                const slider = document.getElementById('receiver-zoom-
