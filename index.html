@@ -115,6 +115,18 @@
         }
         .hidden { display: none !important; }
         
+        /* Animation du sablier d'attente */
+        .spinner {
+            font-size: 50px;
+            margin-bottom: 15px;
+            display: inline-block;
+            animation: spin 2s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
         #video-container {
             position: fixed;
             top: 0; left: 0;
@@ -225,6 +237,14 @@
         <button onclick="sendCode()">Demander la liaison</button>
     </div>
 
+    <div id="waiting-approval-screen" class="container hidden">
+        <button class="back-btn" onclick="goBack()">←</button>
+        <div id="waiting-badge" class="mode-badge"></div>
+        <div class="spinner">⌛</div>
+        <h1>En attente...</h1>
+        <p style="color: #aaa;">Demande envoyée au récepteur.<br>En attente d'approbation...</p>
+    </div>
+
     <div id="start-share-screen" class="container hidden">
         <div id="share-badge" class="mode-badge"></div>
         <h1>Autorisée</h1>
@@ -238,6 +258,7 @@
             <p id="zoom-text" style="color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.8); font-size: 13px;">Pincez l'écran pour zoomer</p>
             <div class="btn-row">
                 <button id="cam-toggle-btn" class="btn-compact" onclick="toggleCamera()">🔄 Renverser caméra</button>
+                <button class="btn-compact" onclick="toggleFullScreen()">🔲 Plein écran</button>
                 <button id="streamer-change-capture-btn" class="btn-compact" onclick="reselectMediaStream()" style="border-color: #e040fb;">🔄 Changer de capture</button>
                 <button class="btn-compact" onclick="goBack()" style="background: rgba(220,53,69,0.8); border-color: #dc3545;">Arrêter</button>
             </div>
@@ -302,7 +323,7 @@
         }
 
         function updateBadges(text, badgeClass) {
-            ['current-badge', 'viewer-badge', 'streamer-badge', 'share-badge'].forEach(id => {
+            ['current-badge', 'viewer-badge', 'streamer-badge', 'waiting-badge', 'share-badge'].forEach(id => {
                 const badge = document.getElementById(id);
                 if (badge) {
                     badge.innerText = text;
@@ -317,8 +338,9 @@
         }
 
         function switchScreen(screenId) {
-            ['pre-menu', 'menu', 'viewer-screen', 'streamer-screen', 'start-share-screen', 'mobile-streaming-screen', 'video-container'].forEach(id => {
-                document.getElementById(id).classList.add('hidden');
+            ['pre-menu', 'menu', 'viewer-screen', 'streamer-screen', 'waiting-approval-screen', 'start-share-screen', 'mobile-streaming-screen', 'video-container'].forEach(id => {
+                const elem = document.getElementById(id);
+                if (elem) elem.classList.add('hidden');
             });
             document.getElementById(screenId).classList.remove('hidden');
         }
@@ -376,15 +398,20 @@
 
             currentCode = fullCodeToSend;
             socket.emit('verify-code', { code: fullCodeToSend, deviceName: "Émetteur", type: selectedType });
+            
+            // Affichage de la page d'attente
+            switchScreen('waiting-approval-screen');
         }
 
         socket.on('error-message', (msg) => {
             alert("Erreur : " + msg);
+            switchScreen('streamer-screen');
             document.getElementById('code-input').value = ""; 
         });
 
         socket.on('connection-denied', () => { 
             alert("Connexion refusée par le récepteur."); 
+            switchScreen('streamer-screen');
             document.getElementById('code-input').value = "";
         });
 
